@@ -30,7 +30,13 @@ export function MermaidDiagram({ chart, className }: MermaidDiagramProps) {
             tertiaryColor: '#f1f5f9',
             fontFamily: 'IBM Plex Sans, system-ui, sans-serif',
           },
-          flowchart: { curve: 'basis', htmlLabels: true },
+          flowchart: {
+            curve: 'basis',
+            htmlLabels: true,
+            nodeSpacing: 28,
+            rankSpacing: 36,
+            padding: 12,
+          },
         });
         const id = `mermaid-${reactId}-${Date.now()}`;
         const { svg } = await mermaid.render(id, chart.trim());

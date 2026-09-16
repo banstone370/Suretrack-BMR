@@ -37,17 +37,151 @@ export const ROLE_GUIDES: Record<Role, RoleGuide> = {
     focusAreas: ['Products', 'Users', 'Settings', 'Audit Trail', 'Reports'],
     workflowMermaid: `
 flowchart TB
-  subgraph Admin["Administrator focus"]
-    P[Products and templates]
-    U[Users and roles]
-    S[SOPs and settings]
-    R[Reports and audit]
+  subgraph SETUP["1 · System setup — Administrator"]
+    direction TB
+    P1[Create Product catalogue]
+    P2[Define process template and stage list]
+    P3[Upload or register SOPs]
+    P4[Create Users and assign roles]
+    P5[Configure Settings]
+    P1 --> P2 --> P3
+    P4 --> P5
   end
-  P --> BatchFlow[Batch manufacturing lifecycle]
-  U --> BatchFlow
-  S --> BatchFlow
-  BatchFlow --> R
-  BatchFlow --> Stages[RM QC → Production → Pack → ETO → Lab → QA → Dispatch]
+
+  subgraph START["2 · Batch start — Production Chemist"]
+    direction TB
+    B1[Create Batch from Product]
+    B2[Status: DRAFT]
+    B3[Start Production]
+    B4[Status: RAW MATERIAL QC]
+    B1 --> B2 --> B3 --> B4
+  end
+
+  subgraph RM["3 · Raw material — QC then Production"]
+    direction TB
+    R1[QC Officer: Raw Material QC checks]
+    R2{RM QC result?}
+    R3[QC approve / e-sign]
+    R4[Production: Issue / consume materials]
+    R5[Status: MATERIAL ISSUED]
+    R1 --> R2
+    R2 -->|Pass| R3 --> R4 --> R5
+    R2 -->|Fail| X1
+  end
+
+  subgraph MFG["4 · Manufacturing — Production Chemist"]
+    direction TB
+    M1[Record manufacturing data]
+    M2[Submit manufacturing]
+    M3[Status: IN PROCESS QC]
+    M1 --> M2 --> M3
+  end
+
+  subgraph QC2["5 · In-process quality — QC Officer"]
+    direction TB
+    Q1[In-Process QC / IPQC]
+    Q2[Visual inspection]
+    Q3{IPQC / Visual OK?}
+    Q4[Status: PACKING]
+    Q1 --> Q2 --> Q3
+    Q3 -->|Pass| Q4
+    Q3 -->|Fail| X1
+  end
+
+  subgraph PACK["6 · Packing — Packing Operator"]
+    direction TB
+    K1[Packing counts]
+    K2[Sealing to SOP parameters]
+    K3[Status: STERILIZATION]
+    K1 --> K2 --> K3
+  end
+
+  subgraph STER["7 · Sterilization — Sterilization Operator"]
+    direction TB
+    S1[Check ETO cartridge stock]
+    S2[Run ETO cycle and record]
+    S3[Status: LABELLING]
+    S1 --> S2 --> S3
+  end
+
+  subgraph LABEL["8 · Labelling — Packing Operator"]
+    direction TB
+    L1[Apply labels]
+    L2[Status: STERILITY TEST]
+    L1 --> L2
+  end
+
+  subgraph LAB["9 · Laboratory — QC Officer"]
+    direction TB
+    T1[Sterility test]
+    T2[BET — Bacterial Endotoxin Test]
+    T3{Lab tests OK?}
+    T4[Status: QA REVIEW]
+    T1 --> T2 --> T3
+    T3 -->|Pass| T4
+    T3 -->|Fail| X1
+  end
+
+  subgraph QA["10 · Quality Assurance — QA Approver"]
+    direction TB
+    A1[Review full eBMR and signatures]
+    A2{QA decision?}
+    A3[Release batch]
+    A4[Transfer to Finished Goods]
+    A5[Status: FINISHED GOODS]
+    A1 --> A2
+    A2 -->|Release| A3 --> A4 --> A5
+    A2 -->|Hold| X1
+    A2 -->|Request correction| X2
+  end
+
+  subgraph SHIP["11 · Dispatch — Dispatch User"]
+    direction TB
+    D1[Maintain Customers]
+    D2[Create dispatch from FG stock]
+    D3[Confirm dispatch]
+    D4[Status: DISPATCHED — complete]
+    D1 --> D2 --> D3 --> D4
+  end
+
+  subgraph EXCEPT["Exception paths — any stage"]
+    direction TB
+    X1[ON HOLD — investigate]
+    X2[Correction request — unlock stage]
+    X3[Resume after fix]
+    X4[CANCELLED or REJECTED]
+    X5[ARCHIVED — closed record]
+    X1 --> X3
+    X2 --> X3
+    X1 --> X4
+    X4 --> X5
+  end
+
+  subgraph GOV["Governance — Administrator anytime"]
+    direction TB
+    G1[Dashboard overview]
+    G2[Inbox / notifications]
+    G3[Audit Trail — who signed what]
+    G4[Reports CSV / PDF]
+    G1 --> G2 --> G3 --> G4
+  end
+
+  SETUP --> START
+  START --> RM
+  R5 --> MFG
+  MFG --> QC2
+  Q4 --> PACK
+  PACK --> STER
+  STER --> LABEL
+  LABEL --> LAB
+  LAB --> QA
+  A5 --> SHIP
+  X3 -.->|return to active stage| RM
+  X3 -.-> MFG
+  X3 -.-> QC2
+  SETUP -.-> GOV
+  SHIP -.-> GOV
+  EXCEPT -.-> GOV
 `,
     relatedAbbr: ['eBMR', 'SOP', 'QA', 'QC', 'CSV', 'PDF'],
     tourSteps: [

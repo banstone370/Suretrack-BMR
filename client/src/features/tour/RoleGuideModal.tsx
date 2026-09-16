@@ -49,7 +49,9 @@ export function RoleGuideModal({ user, open, firstTime = false, onClose }: RoleG
         role="dialog"
         aria-modal="true"
         aria-labelledby="role-guide-title"
-        className="relative z-[81] flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-line bg-white shadow-xl sm:rounded-2xl"
+        className={`relative z-[81] flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-line bg-white shadow-xl sm:rounded-2xl ${
+          tab === 'workflow' ? 'max-w-6xl' : 'max-w-3xl'
+        }`}
       >
         <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
           <div className="min-w-0">
@@ -134,24 +136,59 @@ export function RoleGuideModal({ user, open, firstTime = false, onClose }: RoleG
 
           {tab === 'workflow' && (
             <div className="space-y-4">
-              <p className="text-sm text-muted">
-                Diagram powered by{' '}
-                <a
-                  className="font-medium text-brand-800 underline-offset-2 hover:underline"
-                  href="https://mermaid.js.org/"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Mermaid
-                </a>{' '}
-                (open source). Highlighted boxes are your stages.
-              </p>
-              <MermaidDiagram chart={guide.workflowMermaid} />
-              <p className="text-xs text-muted">
-                Full plant path: Create Batch → RM QC → Issue Material → Manufacture → IPQC /
-                Visual → Pack / Seal → ETO → Label → Sterility / BET → QA Release → Finished Goods
-                → Dispatch.
-              </p>
+              <div>
+                <h3 className="text-sm font-semibold text-brand-950">
+                  {guide.role === 'ADMIN'
+                    ? 'Complete eBMR system workflow'
+                    : 'Your stages in the plant workflow'}
+                </h3>
+                <p className="mt-1 text-sm text-muted">
+                  Diagram powered by{' '}
+                  <a
+                    className="font-medium text-brand-800 underline-offset-2 hover:underline"
+                    href="https://mermaid.js.org/"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Mermaid
+                  </a>{' '}
+                  (open source). Scroll horizontally or vertically if needed — the chart is large on
+                  purpose so every path is visible.
+                </p>
+              </div>
+              <MermaidDiagram
+                chart={guide.workflowMermaid}
+                className="max-h-[min(70dvh,52rem)] overflow-auto rounded-lg border border-line bg-white p-4 [&_svg]:h-auto [&_svg]:min-w-[48rem] [&_svg]:max-w-none"
+              />
+              {guide.role === 'ADMIN' ? (
+                <div className="space-y-2 rounded-lg border border-line bg-brand-50/70 px-3 py-3 text-xs leading-relaxed text-ink sm:text-sm">
+                  <p className="font-semibold text-brand-950">How to read this diagram</p>
+                  <ul className="list-disc space-y-1 pl-5">
+                    <li>
+                      <strong>1 Setup</strong> — Admin creates Products, templates, SOPs, Users, and
+                      Settings before any batch starts.
+                    </li>
+                    <li>
+                      <strong>2–11 Happy path</strong> — Batch moves stage by stage from Draft to
+                      Dispatched; each box names the role that owns the work.
+                    </li>
+                    <li>
+                      <strong>Exception paths</strong> — Fail / hold / correction / cancel can happen
+                      from quality gates; resume returns work to the active stage.
+                    </li>
+                    <li>
+                      <strong>Governance</strong> — Admin can always use Dashboard, Inbox, Audit
+                      Trail, and Reports to oversee the plant.
+                    </li>
+                  </ul>
+                </div>
+              ) : (
+                <p className="text-xs text-muted">
+                  Full plant path: Create Batch → RM QC → Issue Material → Manufacture → IPQC /
+                  Visual → Pack / Seal → ETO → Label → Sterility / BET → QA Release → Finished Goods
+                  → Dispatch. Open the Admin role guide for the complete diagram with exceptions.
+                </p>
+              )}
             </div>
           )}
 
