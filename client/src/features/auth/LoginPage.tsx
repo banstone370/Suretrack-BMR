@@ -5,8 +5,8 @@ import { useAuth } from './AuthContext';
 export function LoginPage() {
   const { user, loading, login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@suretech.local');
-  const [password, setPassword] = useState('Admin@12345');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -74,10 +74,6 @@ export function LoginPage() {
           >
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>
-
-          <p className="mt-4 text-xs text-muted">
-            Default admin: admin@suretech.local / Admin@12345
-          </p>
         </form>
       </div>
     </div>
