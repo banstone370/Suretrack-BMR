@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
+import mongoose from 'mongoose';
 import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import attachmentRoutes from './routes/attachmentRoutes.js';
@@ -39,7 +40,15 @@ export function createApp() {
   });
 
   app.get('/api/v1/health', (_req, res) => {
-    res.json({ success: true, data: { status: 'ok', service: 'suretech-ebmr' } });
+    res.json({
+      success: true,
+      data: {
+        status: 'ok',
+        service: 'suretech-ebmr',
+        database: mongoose.connection.name || null,
+        readyState: mongoose.connection.readyState,
+      },
+    });
   });
 
   app.use('/api/v1/auth', authLimiter, authRoutes);
