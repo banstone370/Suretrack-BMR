@@ -15,10 +15,9 @@ import {
   X,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../features/auth/AuthContext';
-import { RoleGuideModal } from '../../features/tour/RoleGuideModal';
+import { openRoleGuide } from '../../features/tour/RoleGuideModal';
 import { api } from '../../lib/api';
 import { cn, ROLE_LABELS } from '../../lib/utils';
 import type { ApiResponse } from '../../types';
@@ -50,7 +49,6 @@ function tourIdForPath(to: string) {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { user, logout, hasPermission } = useAuth();
-  const [guideOpen, setGuideOpen] = useState(false);
 
   const pending = useQuery({
     queryKey: ['notifications-pending'],
@@ -129,8 +127,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           type="button"
           data-tour="nav-role-guide"
           onClick={() => {
-            setGuideOpen(true);
             onClose();
+            openRoleGuide();
           }}
           className="mb-2 flex w-full items-center justify-center gap-2 rounded-md border border-white/15 px-3 py-2.5 text-sm text-brand-100 hover:bg-white/5"
         >
@@ -149,14 +147,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           Sign out
         </button>
       </div>
-
-      {user && (
-        <RoleGuideModal
-          user={user}
-          open={guideOpen}
-          onClose={() => setGuideOpen(false)}
-        />
-      )}
     </aside>
   );
 }

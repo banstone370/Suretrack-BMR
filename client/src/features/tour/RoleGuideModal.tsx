@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { BookOpen, ListOrdered, Network, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { Role, User } from '../../types';
@@ -20,13 +21,12 @@ export function RoleGuideModal({ user, open, firstTime = false, onClose }: RoleG
   const guide = useMemo(() => getRoleGuide(user.role as Role), [user.role]);
   const [tab, setTab] = useState<Tab>('overview');
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
   function finish(andTour: boolean) {
     markRoleTourComplete(user.id);
     onClose();
     if (andTour) {
-      // Let modal unmount before highlighting sidebar.
       window.setTimeout(() => startUiTour(guide), 200);
     }
   }
@@ -37,8 +37,8 @@ export function RoleGuideModal({ user, open, firstTime = false, onClose }: RoleG
     { id: 'abbreviations', label: 'Abbreviations', icon: ListOrdered },
   ];
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[80] flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-brand-950/50 backdrop-blur-[2px]"
@@ -49,7 +49,7 @@ export function RoleGuideModal({ user, open, firstTime = false, onClose }: RoleG
         role="dialog"
         aria-modal="true"
         aria-labelledby="role-guide-title"
-        className="relative z-[61] flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-line bg-white shadow-xl sm:rounded-2xl"
+        className="relative z-[81] flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl border border-line bg-white shadow-xl sm:rounded-2xl"
       >
         <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4 sm:px-6">
           <div className="min-w-0">
@@ -220,6 +220,12 @@ export function RoleGuideModal({ user, open, firstTime = false, onClose }: RoleG
           </div>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
+}
+
+/** Dispatch from sidebar / header to open the guide without nesting inside transformed layouts. */
+export function openRoleGuide() {
+  window.dispatchEvent(new CustomEvent('suretech:open-role-guide'));
 }
