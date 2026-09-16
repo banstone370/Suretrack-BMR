@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "IBM Plex Serif", ui-serif, Georgia, serif;
+  --color-brand-950: #062636;
+  --color-brand-900: #0b4f6c;
+  --color-brand-800: #0e6288;
+  --color-brand-700: #1479a5;
+  --color-brand-100: #e8f4f8;
+  --color-brand-50: #f3f9fb;
+  --color-accent-600: #1a7a5c;
+  --color-accent-500: #21936f;
+  --color-surface: #f5f7f9;
+  --color-ink: #14212b;
+  --color-muted: #5a6b76;
+  --color-line: #d5dee5;
+  --color-warn: #b45309;
+  --color-danger: #b42318;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, #d7eaf2 0%, transparent 55%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, #dceee6 0%, transparent 45%),
+    var(--color-surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/* Tables scroll horizontally on narrow viewports instead of clipping */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll table {
+  min-width: 36rem;
+}
