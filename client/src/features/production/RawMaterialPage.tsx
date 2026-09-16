@@ -14,6 +14,48 @@ interface QcCheck {
   result?: 'PASS' | 'FAIL' | 'NA' | null;
 }
 
+/** Common RM QC observations — last option opens a free-text box. */
+const OBSERVATION_PRESETS = [
+  'Satisfactory — meets specification',
+  'No defect observed',
+  'Within acceptable limit',
+  'Hub intact and correctly formed',
+  'Bevel sharp, undamaged, correct angle',
+  'Guide wire passes freely without obstruction',
+  'Free from dust, burrs and foreign particles',
+  'Dimensional / visual check OK',
+  'Minor cosmetic mark — acceptable per SOP',
+  'Rework / recheck required',
+  'Does not meet specification — reject',
+  'Other',
+] as const;
+
+const OTHER_LABEL = 'Other';
+const OTHER_PREFIX = 'Other: ';
+
+function observationToUi(value?: string): { choice: string; otherText: string } {
+  const raw = (value ?? '').trim();
+  if (!raw) return { choice: '', otherText: '' };
+  if (OBSERVATION_PRESETS.includes(raw as (typeof OBSERVATION_PRESETS)[number]) && raw !== OTHER_LABEL) {
+    return { choice: raw, otherText: '' };
+  }
+  if (raw.startsWith(OTHER_PREFIX)) {
+    return { choice: OTHER_LABEL, otherText: raw.slice(OTHER_PREFIX.length) };
+  }
+  if (raw === OTHER_LABEL) return { choice: OTHER_LABEL, otherText: '' };
+  // Legacy free-text → treat as Other
+  return { choice: OTHER_LABEL, otherText: raw };
+}
+
+function uiToObservation(choice: string, otherText: string): string {
+  if (!choice) return '';
+  if (choice === OTHER_LABEL) {
+    const t = otherText.trim();
+    return t ? `${OTHER_PREFIX}${t}` : OTHER_LABEL;
+  }
+  return choice;
+}
+
 export function RawMaterialPage() {
   const { batchId } = useParams();
   const { hasPermission } = useAuth();
@@ -264,13 +306,49 @@ export function RawMaterialPage() {
                         className="rounded border border-line px-2 py-1"
                       />
                     </td>
-                    <td className="px-3 py-2">
-                      <input
-                        disabled={qcLocked || !hasPermission('rm_qc:edit')}
-                        value={row.observation ?? ''}
-                        onChange={(e) => updateCheck(index, { observation: e.target.value })}
-                        className="w-40 rounded border border-line px-2 py-1"
-                      />
+                    <td className="px-3 py-2 align-top">
+                      {(() => {
+                        const { choice, otherText } = observationToUi(row.observation);
+                        const disabled = qcLocked || !hasPermission('rm_qc:edit');
+                        return (
+                          <div className="flex min-w-[11rem] flex-col gap-1.5">
+                            <select
+                              disabled={disabled}
+                              value={choice}
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                updateCheck(index, {
+                                  observation: uiToObservation(
+                                    next,
+                                    next === OTHER_LABEL ? otherText : '',
+                                  ),
+                                });
+                              }}
+                              className="max-w-[14rem] rounded border border-line px-2 py-1"
+                            >
+                              <option value="">Select observation</option>
+                              {OBSERVATION_PRESETS.map((opt) => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                            {choice === OTHER_LABEL && (
+                              <input
+                                disabled={disabled}
+                                placeholder="Type other reason…"
+                                value={otherText}
+                                onChange={(e) =>
+                                  updateCheck(index, {
+                                    observation: uiToObservation(OTHER_LABEL, e.target.value),
+                                  })
+                                }
+                                className="w-full min-w-[11rem] rounded border border-line px-2 py-1"
+                              />
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-3 py-2">
                       <select
