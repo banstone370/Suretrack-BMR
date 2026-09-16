@@ -56,3 +56,43 @@ textarea {
 .table-scroll table {
   min-width: 36rem;
 }
+
+/* driver.js (MIT) — product tour popovers */
+.suretech-driver-popover {
+  font-family: var(--font-sans);
+  max-width: 22rem;
+  border-radius: 0.75rem !important;
+  border: 1px solid var(--color-line) !important;
+  box-shadow: 0 12px 40px rgba(6, 38, 54, 0.18) !important;
+}
+
+.suretech-driver-popover .driver-popover-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-brand-950);
+}
+
+.suretech-driver-popover .driver-popover-description {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+
+.suretech-driver-popover .driver-popover-next-btn,
+.suretech-driver-popover .driver-popover-done-btn {
+  background: var(--color-brand-900) !important;
+  color: #fff !important;
+  border: none !important;
+  text-shadow: none !important;
+  border-radius: 0.375rem !important;
+}
+
+.suretech-driver-popover .driver-popover-prev-btn {
+  color: var(--color-muted) !important;
+  border: 1px solid var(--color-line) !important;
+  background: #fff !important;
+  text-shadow: none !important;
+  border-radius: 0.375rem !important;
+}
+

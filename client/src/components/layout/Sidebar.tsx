@@ -4,6 +4,7 @@ import {
   ClipboardCheck,
   FileText,
   FlaskConical,
+  GraduationCap,
   LayoutDashboard,
   LogOut,
   Package,
@@ -14,8 +15,10 @@ import {
   X,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../features/auth/AuthContext';
+import { RoleGuideModal } from '../../features/tour/RoleGuideModal';
 import { api } from '../../lib/api';
 import { cn, ROLE_LABELS } from '../../lib/utils';
 import type { ApiResponse } from '../../types';
@@ -41,8 +44,13 @@ interface SidebarProps {
   onClose: () => void;
 }
 
+function tourIdForPath(to: string) {
+  return `nav-${to.replace(/^\//, '').replace(/\//g, '-')}`;
+}
+
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { user, logout, hasPermission } = useAuth();
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const pending = useQuery({
     queryKey: ['notifications-pending'],
@@ -87,6 +95,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <NavLink
               key={item.to}
               to={item.to}
+              data-tour={tourIdForPath(item.to)}
               onClick={onClose}
               className={({ isActive }) =>
                 cn(
@@ -118,6 +127,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </div>
         <button
           type="button"
+          data-tour="nav-role-guide"
+          onClick={() => {
+            setGuideOpen(true);
+            onClose();
+          }}
+          className="mb-2 flex w-full items-center justify-center gap-2 rounded-md border border-white/15 px-3 py-2.5 text-sm text-brand-100 hover:bg-white/5"
+        >
+          <GraduationCap size={14} />
+          Role guide & tour
+        </button>
+        <button
+          type="button"
           onClick={() => {
             onClose();
             logout();
@@ -128,6 +149,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           Sign out
         </button>
       </div>
+
+      {user && (
+        <RoleGuideModal
+          user={user}
+          open={guideOpen}
+          onClose={() => setGuideOpen(false)}
+        />
+      )}
     </aside>
   );
 }

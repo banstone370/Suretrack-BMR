@@ -1,6 +1,7 @@
 import { Menu } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { FirstTimeTourHost } from '../../features/tour/FirstTimeTourHost';
 import { Sidebar } from './Sidebar';
 
 export function AppShell() {
@@ -61,6 +62,8 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      <FirstTimeTourHost />
     </div>
   );
 }
