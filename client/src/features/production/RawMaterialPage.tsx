@@ -80,9 +80,55 @@ export function RawMaterialPage() {
   const consData = consumption.query.data?.data ?? {};
   const qcLocked = ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(String(qcData.lockState ?? ''));
   const consLocked = ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(String(consData.lockState ?? ''));
+  const canEditQc = hasPermission('rm_qc:edit') && !qcLocked;
+
+  const [sharedDate, setSharedDate] = useState('');
+  const [sharedStart, setSharedStart] = useState('');
+  const [sharedEnd, setSharedEnd] = useState('');
 
   function updateCheck(index: number, patch: Partial<QcCheck>) {
     setChecks((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+  }
+
+  function applyDateTimeToAll() {
+    if (!sharedDate && !sharedStart && !sharedEnd) {
+      setMsg('Enter a date and/or time above, then apply to all processes.');
+      return;
+    }
+    setChecks((prev) =>
+      prev.map((c) => ({
+        ...c,
+        ...(sharedDate ? { processDate: sharedDate } : {}),
+        ...(sharedStart ? { startTime: sharedStart } : {}),
+        ...(sharedEnd ? { endTime: sharedEnd } : {}),
+      })),
+    );
+    setMsg('Date and time applied to all process rows.');
+  }
+
+  function applyFirstRowDateTimeToAll() {
+    const first = checks[0];
+    if (!first) return;
+    if (!first.processDate && !first.startTime && !first.endTime) {
+      setMsg('Fill date/time on the first process row, then apply to all.');
+      return;
+    }
+    setChecks((prev) =>
+      prev.map((c, i) =>
+        i === 0
+          ? c
+          : {
+              ...c,
+              processDate: first.processDate ?? c.processDate,
+              startTime: first.startTime ?? c.startTime,
+              endTime: first.endTime ?? c.endTime,
+            },
+      ),
+    );
+    setSharedDate(first.processDate ?? '');
+    setSharedStart(first.startTime ?? '');
+    setSharedEnd(first.endTime ?? '');
+    setMsg('First row date and time copied to all processes.');
   }
 
   return (
@@ -121,6 +167,59 @@ export function RawMaterialPage() {
             </h2>
             <p className="text-xs text-muted">Lock: {String(qcData.lockState ?? 'OPEN')}</p>
           </div>
+
+          {canEditQc && checks.length > 1 && (
+            <div className="rounded-lg border border-brand-200 bg-brand-50/80 px-3 py-3 sm:px-4">
+              <p className="text-sm font-medium text-brand-950">Same date & time for all processes</p>
+              <p className="mt-0.5 text-xs text-muted">
+                Enter once, then apply to every row in the list. Observation and result stay per
+                process.
+              </p>
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <label className="text-xs font-medium text-muted">
+                  Date
+                  <input
+                    type="date"
+                    value={sharedDate}
+                    onChange={(e) => setSharedDate(e.target.value)}
+                    className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-sm text-ink"
+                  />
+                </label>
+                <label className="text-xs font-medium text-muted">
+                  Start
+                  <input
+                    type="time"
+                    value={sharedStart}
+                    onChange={(e) => setSharedStart(e.target.value)}
+                    className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-sm text-ink"
+                  />
+                </label>
+                <label className="text-xs font-medium text-muted">
+                  End
+                  <input
+                    type="time"
+                    value={sharedEnd}
+                    onChange={(e) => setSharedEnd(e.target.value)}
+                    className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-sm text-ink"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={applyDateTimeToAll}
+                  className="rounded-md bg-brand-900 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800"
+                >
+                  Apply to all processes
+                </button>
+                <button
+                  type="button"
+                  onClick={applyFirstRowDateTimeToAll}
+                  className="rounded-md border border-line bg-white px-3 py-2 text-sm text-brand-900 hover:bg-white"
+                >
+                  Copy first row to all
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="table-scroll">
             <table className="min-w-full text-left text-sm">
