@@ -9,9 +9,8 @@ import { User } from '../models/User.js';
 import { Role } from '../types/enums.js';
 import { hashPassword } from '../utils/authTokens.js';
 
-async function seed() {
-  await connectDb();
-
+/** Idempotent seed — safe to run on every boot. */
+export async function runSeed(): Promise<void> {
   let admin = await User.findOne({ email: env.seedAdminEmail.toLowerCase() });
   if (!admin) {
     admin = await User.create({
@@ -211,13 +210,24 @@ async function seed() {
     }
   }
 
-  console.log('\nSeed complete.');
+  console.log('Seed complete.');
   console.log(`Admin login: ${env.seedAdminEmail} / ${env.seedAdminPassword}`);
   console.log('Demo users password: Demo@12345');
+}
+
+async function seedCli() {
+  await connectDb();
+  await runSeed();
   process.exit(0);
 }
 
-seed().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const isDirectRun =
+  process.argv[1]?.includes('seed') ||
+  process.env.npm_lifecycle_event === 'seed';
+
+if (isDirectRun) {
+  seedCli().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
