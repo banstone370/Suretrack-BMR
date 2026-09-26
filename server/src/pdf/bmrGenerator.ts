@@ -115,6 +115,24 @@ function sig(value: unknown) {
   }`;
 }
 
+const PAGE_W = 495;
+
+function pageBanner(doc: PDFKit.PDFDocument, batch: IBatch, page: number) {
+  doc.fontSize(13).fillColor('#0b4f6c').text('SURETECH MEDICAL INC.', { align: 'center' });
+  doc.fontSize(11).fillColor('#14212b').text('BATCH MANUFACTURING RECORD', { align: 'center' });
+  doc.fontSize(8).fillColor('#5a6b76').text(
+    `${batch.productName}  ·  Cat. ${batch.catalogueNo}  ·  Batch ${batch.batchNo}  ·  Page ${page} of 5`,
+    { align: 'center' },
+  );
+  doc.moveDown(0.4);
+  doc.fillColor('#14212b');
+}
+
+function orDashRows(rows: string[][], cols: number): string[][] {
+  if (rows.length > 0) return rows;
+  return [Array.from({ length: cols }, () => '—')];
+}
+
 export function streamBmrPdf(batch: IBatch, res: Response) {
   const doc = new PDFDocument({ margin: 50, size: 'A4' });
   const filename = `BMR-${batch.batchNo}.pdf`;
@@ -123,45 +141,46 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
   doc.pipe(res);
 
-  doc.fontSize(16).fillColor('#0b4f6c').text('SURETECH MEDICAL INC.', { align: 'center' });
-  doc.moveDown(0.2);
-  doc.fontSize(13).fillColor('#14212b').text('BATCH MANUFACTURING RECORD', { align: 'center' });
-  doc.moveDown(0.2);
-  doc.fontSize(10).fillColor('#5a6b76').text('Electronic BMR — Introducer Needle workflow', {
-    align: 'center',
-  });
-  doc.moveDown(1);
-
-  section(doc, 'BATCH INFORMATION');
-  line(doc, 'Product', batch.productName);
-  line(doc, 'Catalogue No.', batch.catalogueNo);
-  line(doc, 'Batch No.', batch.batchNo);
-  line(doc, 'Batch Size', batch.batchSize?.toLocaleString());
-  line(doc, 'Manufacturing Date', fmtDate(batch.manufacturingDate));
-  line(doc, 'Expiry Date', fmtDate(batch.expiryDate));
-  line(doc, 'Status', batch.status);
-  line(doc, 'Revision', `R${batch.currentRevision}`);
-
   const stages = (batch.stages ?? {}) as Record<string, Record<string, unknown>>;
   const snap = batch.processParamsSnapshot;
 
-  section(doc, 'RAW MATERIAL QC');
+  // —— Page 1: identity + raw material ——
+  pageBanner(doc, batch, 1);
+  section(doc, '1. BATCH INFORMATION');
+  drawTable(
+    doc,
+    [
+      { header: 'PRODUCT', width: 120 },
+      { header: 'CATALOGUE NO.', width: 80, align: 'center' },
+      { header: 'BATCH NO.', width: 80, align: 'center' },
+      { header: 'BATCH SIZE', width: 70, align: 'center' },
+      { header: 'MFG DATE', width: 72, align: 'center' },
+      { header: 'EXPIRY', width: 73, align: 'center' },
+    ],
+    [[
+      cellText(batch.productName),
+      cellText(batch.catalogueNo),
+      cellText(batch.batchNo),
+      cellText(batch.batchSize?.toLocaleString()),
+      fmtDate(batch.manufacturingDate),
+      fmtDate(batch.expiryDate),
+    ]],
+  );
+
+  section(doc, '2. RAW MATERIAL QUALITY CHECK');
   const rmQc = stages.rawMaterialQc ?? {};
   const checks = (rmQc.checks as Array<Record<string, unknown>>) ?? [];
-  if (checks.length === 0) {
-    doc.text('No entries.');
-  } else {
-    // Same columns as the on-screen Quality Check table. Date and times are centered.
-    drawTable(
-      doc,
-      [
-        { header: 'PROCESS', width: 140, align: 'left' },
-        { header: 'DATE', width: 68, align: 'center' },
-        { header: 'START', width: 48, align: 'center' },
-        { header: 'END', width: 48, align: 'center' },
-        { header: 'OBSERVATION', width: 140, align: 'left' },
-        { header: 'RESULT', width: 51, align: 'center' },
-      ],
+  drawTable(
+    doc,
+    [
+      { header: 'PROCESS', width: 140 },
+      { header: 'DATE', width: 68, align: 'center' },
+      { header: 'START', width: 48, align: 'center' },
+      { header: 'END', width: 48, align: 'center' },
+      { header: 'OBSERVATION', width: 140 },
+      { header: 'RESULT', width: 51, align: 'center' },
+    ],
+    orDashRows(
       checks.map((c) => [
         cellText(c.process),
         fmtDate(c.processDate as string),
@@ -170,123 +189,312 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
         cellText(c.observation),
         cellText(c.result),
       ]),
-    );
-  }
+      6,
+    ),
+  );
   line(doc, 'Overall', rmQc.overallResult);
   line(doc, 'Approved by', sig(rmQc.approvedBy));
 
-  section(doc, 'RAW MATERIAL CONSUMPTION');
+  section(doc, '3. RAW MATERIAL CONSUMPTION');
   const cons = stages.rawMaterialConsumption ?? {};
-  const lines = (cons.lines as Array<Record<string, unknown>>) ?? [];
-  if (lines.length === 0) doc.text('No entries.');
-  else {
-    lines.forEach((l, i) => {
-      doc.text(
-        `${i + 1}. ${l.rawMaterialName} | Supplier batch ${l.supplierBatchNo} | Qty ${l.quantityWithdrawn} ${l.unit ?? ''}`,
-      );
-    });
-  }
+  const consLines = (cons.lines as Array<Record<string, unknown>>) ?? [];
+  drawTable(
+    doc,
+    [
+      { header: 'RAW MATERIAL', width: 110 },
+      { header: 'SUPPLIER BATCH', width: 90, align: 'center' },
+      { header: 'QTY', width: 50, align: 'center' },
+      { header: 'UNIT', width: 40, align: 'center' },
+      { header: 'QC DATE', width: 70, align: 'center' },
+      { header: 'REQ. SLIP', width: 70, align: 'center' },
+      { header: 'DONE BY', width: 65 },
+    ],
+    orDashRows(
+      consLines.map((l) => [
+        cellText(l.rawMaterialName),
+        cellText(l.supplierBatchNo),
+        cellText(l.quantityWithdrawn),
+        cellText(l.unit),
+        fmtDate(l.qualityCheckedDate as string),
+        cellText(l.requirementSlipNo),
+        sig(l.doneBy),
+      ]),
+      7,
+    ),
+  );
 
-  section(doc, 'MANUFACTURING');
+  // —— Page 2: manufacturing + in-process + visual ——
+  doc.addPage();
+  pageBanner(doc, batch, 2);
+  section(doc, '4. MANUFACTURING');
   const mfg = stages.manufacturing ?? {};
-  line(doc, 'Process', mfg.process);
-  line(doc, 'Date', fmtDate(mfg.processDate as string));
-  line(doc, 'Start / End', `${mfg.startTime ?? '—'} – ${mfg.endTime ?? '—'}`);
-  line(doc, 'Operator', sig(mfg.operator));
+  drawTable(
+    doc,
+    [
+      { header: 'PROCESS', width: 175 },
+      { header: 'DATE', width: 70, align: 'center' },
+      { header: 'START', width: 50, align: 'center' },
+      { header: 'END', width: 50, align: 'center' },
+      { header: 'STATUS', width: 70, align: 'center' },
+      { header: 'OPERATOR', width: 80 },
+    ],
+    [[
+      cellText(mfg.process ?? 'Needles made ready for sterilization'),
+      fmtDate(mfg.processDate as string),
+      cellText(mfg.startTime),
+      cellText(mfg.endTime),
+      cellText(mfg.status),
+      sig(mfg.operator),
+    ]],
+  );
   line(doc, 'Remarks', mfg.remarks);
 
-  section(doc, 'IN-PROCESS QC');
+  section(doc, '5. IN-PROCESS QC');
   const ipqc = stages.inProcessQc ?? {};
-  line(doc, 'Dust free', ipqc.dustFree ? 'Yes' : 'No');
-  line(doc, 'Burr free', ipqc.burrFree ? 'Yes' : 'No');
-  line(doc, 'Foreign particle free', ipqc.foreignParticleFree ? 'Yes' : 'No');
-  line(doc, 'Result', ipqc.result);
-  line(doc, 'Observation', ipqc.observation);
-  line(doc, 'Checked by', sig(ipqc.qcCheckedBy ?? ipqc.checkedBy));
+  drawTable(
+    doc,
+    [
+      { header: 'CHECK', width: 180 },
+      { header: 'RESULT', width: 80, align: 'center' },
+      { header: 'OBSERVATION', width: 155 },
+      { header: 'CHECKED BY', width: 80 },
+    ],
+    [
+      ['Dust free', ipqc.dustFree ? 'Yes' : 'No', cellText(ipqc.observation), sig(ipqc.qcCheckedBy ?? ipqc.checkedBy)],
+      ['Burr free', ipqc.burrFree ? 'Yes' : 'No', '', ''],
+      ['Foreign particle free', ipqc.foreignParticleFree ? 'Yes' : 'No', '', ''],
+      ['Overall', cellText(ipqc.result), '', ''],
+    ],
+  );
 
-  section(doc, 'VISUAL INSPECTION');
+  section(doc, '6. VISUAL INSPECTION');
   const vis = stages.visualInspection ?? {};
-  line(doc, 'Units checked', vis.unitsChecked);
-  line(doc, 'Particles found', vis.particlesFound);
-  line(doc, 'Particles %', vis.particlesFoundPercent);
-  line(doc, 'Inspection date', fmtDate(vis.inspectionDate as string));
-  line(doc, 'Done by', sig(vis.doneBy));
+  drawTable(
+    doc,
+    [
+      { header: 'UNITS CHECKED', width: 80, align: 'center' },
+      { header: 'PARTICLES', width: 70, align: 'center' },
+      { header: '%', width: 50, align: 'center' },
+      { header: 'DATE', width: 70, align: 'center' },
+      { header: 'START', width: 50, align: 'center' },
+      { header: 'END', width: 50, align: 'center' },
+      { header: 'DONE BY', width: 125 },
+    ],
+    [[
+      cellText(vis.unitsChecked),
+      cellText(vis.particlesFound),
+      vis.particlesFoundPercent === undefined || vis.particlesFoundPercent === null
+        ? '—'
+        : String(vis.particlesFoundPercent),
+      fmtDate(vis.inspectionDate as string),
+      cellText(vis.startTime),
+      cellText(vis.endTime),
+      sig(vis.doneBy),
+    ]],
+  );
 
-  section(doc, 'PACKING');
+  // —— Page 3: packing + sealing ——
+  doc.addPage();
+  pageBanner(doc, batch, 3);
+  section(doc, '7. PACKING');
   const pack = stages.packing ?? {};
-  line(doc, 'Pouches taken', pack.pouchesTaken);
-  line(doc, 'Devices packed', pack.devicesPacked);
-  line(doc, 'Pouches damaged', pack.pouchesDamaged);
-  line(doc, 'Good pouches', pack.goodPouches);
-  line(doc, 'Packing date', fmtDate(pack.packingDate as string));
-  line(doc, 'Operator', sig(pack.operator));
+  drawTable(
+    doc,
+    [
+      { header: 'POUCHES TAKEN', width: 80, align: 'center' },
+      { header: 'DEVICES PACKED', width: 85, align: 'center' },
+      { header: 'DAMAGED', width: 70, align: 'center' },
+      { header: 'GOOD POUCHES', width: 80, align: 'center' },
+      { header: 'DATE', width: 70, align: 'center' },
+      { header: 'OPERATOR', width: 110 },
+    ],
+    [[
+      cellText(pack.pouchesTaken),
+      cellText(pack.devicesPacked),
+      cellText(pack.pouchesDamaged),
+      cellText(pack.goodPouches),
+      fmtDate(pack.packingDate as string),
+      sig(pack.operator),
+    ]],
+  );
 
-  section(doc, 'SEALING');
+  section(doc, '8. SEALING');
   const seal = stages.sealing ?? {};
-  line(
+  drawTable(
     doc,
-    'Configured / Actual temp',
-    `${seal.configuredTemperatureC ?? snap?.sealingParams?.temperatureC ?? 200}°C / ${seal.actualTemperatureC ?? '—'}°C`,
+    [
+      { header: 'SET °C', width: 55, align: 'center' },
+      { header: 'ACTUAL °C', width: 65, align: 'center' },
+      { header: 'SOP', width: 75, align: 'center' },
+      { header: 'DEVICES', width: 60, align: 'center' },
+      { header: 'DATE', width: 70, align: 'center' },
+      { header: 'START', width: 50, align: 'center' },
+      { header: 'END', width: 50, align: 'center' },
+      { header: 'OPERATOR', width: 70 },
+    ],
+    [[
+      cellText(seal.configuredTemperatureC ?? snap?.sealingParams?.temperatureC ?? 200),
+      cellText(seal.actualTemperatureC),
+      cellText(seal.sopRef ?? snap?.sealingParams?.sopRef ?? 'SOP/MF/011'),
+      cellText(seal.devicesSealed),
+      fmtDate(seal.sealingDate as string),
+      cellText(seal.startTime),
+      cellText(seal.endTime),
+      sig(seal.operator),
+    ]],
   );
-  line(doc, 'SOP', seal.sopRef ?? snap?.sealingParams?.sopRef ?? 'SOP/MF/011');
-  line(doc, 'Devices sealed', seal.devicesSealed);
-  line(doc, 'Operator', sig(seal.operator));
 
-  section(doc, 'ETO STERILIZATION');
+  // —— Page 4: ETO + labelling ——
+  doc.addPage();
+  pageBanner(doc, batch, 4);
+  section(doc, '9. ETO STERILIZATION');
   const ster = stages.sterilization ?? {};
-  line(
+  drawTable(
     doc,
-    'Setpoints',
-    `${ster.configuredTemperatureC ?? snap?.sterilizationParams?.temperatureC ?? 55}°C / ${ster.requiredDurationHours ?? snap?.sterilizationParams?.durationHours ?? 4}h / ${ster.etoCartridgeGrams ?? snap?.sterilizationParams?.etoCartridgeGrams ?? 40}g`,
+    [
+      { header: 'SET °C', width: 45, align: 'center' },
+      { header: 'HOURS', width: 45, align: 'center' },
+      { header: 'ETO g', width: 45, align: 'center' },
+      { header: 'SOP', width: 70, align: 'center' },
+      { header: 'QTY', width: 40, align: 'center' },
+      { header: 'MACHINE', width: 60, align: 'center' },
+      { header: 'CARTRIDGE', width: 80, align: 'center' },
+      { header: 'OPERATOR', width: 110 },
+    ],
+    [[
+      cellText(ster.configuredTemperatureC ?? snap?.sterilizationParams?.temperatureC ?? 55),
+      cellText(ster.requiredDurationHours ?? snap?.sterilizationParams?.durationHours ?? 4),
+      cellText(ster.etoCartridgeGrams ?? snap?.sterilizationParams?.etoCartridgeGrams ?? 40),
+      cellText(ster.sopRef ?? snap?.sterilizationParams?.sopRef ?? 'SOP/MF/008'),
+      cellText(ster.quantity),
+      cellText(ster.machineId),
+      cellText(ster.cartridgeBatchNo),
+      sig(ster.operator),
+    ]],
   );
-  line(doc, 'SOP', ster.sopRef ?? snap?.sterilizationParams?.sopRef ?? 'SOP/MF/008');
-  line(doc, 'Quantity', ster.quantity);
-  line(doc, 'Machine ID', ster.machineId);
-  line(doc, 'Cartridge', ster.cartridgeBatchNo);
-  line(doc, 'Start', `${fmtDate(ster.startDate as string)} ${ster.startTime ?? ''}`);
-  line(doc, 'End', `${fmtDate(ster.endDate as string)} ${ster.endTime ?? ''}`);
-  line(doc, 'Operator', sig(ster.operator));
+  drawTable(
+    doc,
+    [
+      { header: 'START DATE', width: 123, align: 'center' },
+      { header: 'START', width: 124, align: 'center' },
+      { header: 'END DATE', width: 124, align: 'center' },
+      { header: 'END', width: 124, align: 'center' },
+    ],
+    [[
+      fmtDate(ster.startDate as string),
+      cellText(ster.startTime),
+      fmtDate(ster.endDate as string),
+      cellText(ster.endTime),
+    ]],
+  );
 
-  section(doc, 'LABELLING');
+  section(doc, '10. LABELLING');
   const lab = stages.labelling ?? {};
-  line(doc, 'Printed / Used / Destroyed', `${lab.labelsPrinted ?? '—'} / ${lab.labelsUsed ?? '—'} / ${lab.labelsDestroyed ?? '—'}`);
-  line(doc, 'Devices labelled', lab.devicesLabelled);
-  line(doc, 'Done on', fmtDate(lab.doneOn as string));
-  line(doc, 'Printed by', sig(lab.printedBy));
+  drawTable(
+    doc,
+    [
+      { header: 'PRINTED', width: 70, align: 'center' },
+      { header: 'USED', width: 60, align: 'center' },
+      { header: 'DESTROYED', width: 75, align: 'center' },
+      { header: 'DEVICES', width: 65, align: 'center' },
+      { header: 'DONE ON', width: 75, align: 'center' },
+      { header: 'PRINTED BY', width: 150 },
+    ],
+    [[
+      cellText(lab.labelsPrinted),
+      cellText(lab.labelsUsed),
+      cellText(lab.labelsDestroyed),
+      cellText(lab.devicesLabelled),
+      fmtDate(lab.doneOn as string),
+      sig(lab.printedBy),
+    ]],
+  );
 
-  section(doc, 'STERILITY TEST');
+  // —— Page 5: lab tests + release + storage ——
+  doc.addPage();
+  pageBanner(doc, batch, 5);
+  section(doc, '11. STERILITY TEST');
   const st = stages.sterilityTest ?? {};
-  line(doc, 'SOP', st.sopRef ?? snap?.sterilitySop ?? 'SOP/QC/004');
-  line(doc, 'Report No.', st.reportNo);
-  line(doc, 'Result', st.result);
-  line(doc, 'Test date', fmtDate((st.testDate ?? st.doneOn) as string));
-  line(doc, 'Tested by', sig(st.testedBy));
+  drawTable(
+    doc,
+    [
+      { header: 'SOP', width: 75, align: 'center' },
+      { header: 'REPORT NO.', width: 80, align: 'center' },
+      { header: 'RESULT', width: 60, align: 'center' },
+      { header: 'DATE', width: 70, align: 'center' },
+      { header: 'START', width: 50, align: 'center' },
+      { header: 'END', width: 50, align: 'center' },
+      { header: 'TESTED BY', width: 110 },
+    ],
+    [[
+      cellText(st.sopRef ?? snap?.sterilitySop ?? 'SOP/QC/004'),
+      cellText(st.reportNo),
+      cellText(st.result),
+      fmtDate((st.testDate ?? st.doneOn) as string),
+      cellText(st.startTime),
+      cellText(st.endTime),
+      sig(st.testedBy),
+    ]],
+  );
 
-  section(doc, 'BET TEST');
+  section(doc, '12. BACTERIAL ENDOTOXIN TEST (BET)');
   const bet = stages.betTest ?? {};
-  line(doc, 'SOP', bet.sopRef ?? snap?.betSop ?? 'SOP/QC/005');
-  line(doc, 'Report No.', bet.reportNo);
-  line(doc, 'Result', bet.result);
-  line(doc, 'Test date', fmtDate((bet.testDate ?? bet.doneOn) as string));
-  line(doc, 'Tested by', sig(bet.testedBy));
+  drawTable(
+    doc,
+    [
+      { header: 'SOP', width: 75, align: 'center' },
+      { header: 'REPORT NO.', width: 80, align: 'center' },
+      { header: 'RESULT', width: 60, align: 'center' },
+      { header: 'DATE', width: 70, align: 'center' },
+      { header: 'START', width: 50, align: 'center' },
+      { header: 'END', width: 50, align: 'center' },
+      { header: 'TESTED BY', width: 110 },
+    ],
+    [[
+      cellText(bet.sopRef ?? snap?.betSop ?? 'SOP/QC/005'),
+      cellText(bet.reportNo),
+      cellText(bet.result),
+      fmtDate((bet.testDate ?? bet.doneOn) as string),
+      cellText(bet.startTime),
+      cellText(bet.endTime),
+      sig(bet.testedBy),
+    ]],
+  );
 
-  section(doc, 'QA RELEASE');
+  section(doc, '13. QA RELEASE');
   const qa = stages.qaReview ?? {};
-  line(doc, 'Decision', qa.decision);
-  line(doc, 'Review notes', qa.reviewNotes);
-  line(doc, 'Released by', sig(qa.approvedBy ?? qa.reviewedBy));
+  drawTable(
+    doc,
+    [
+      { header: 'DECISION', width: 90, align: 'center' },
+      { header: 'REVIEW NOTES', width: 255 },
+      { header: 'RELEASED BY', width: 150 },
+    ],
+    [[cellText(qa.decision), cellText(qa.reviewNotes), sig(qa.approvedBy ?? qa.reviewedBy)]],
+  );
 
-  section(doc, 'FINISHED GOODS / STORAGE');
+  section(doc, '14. FINISHED GOODS / STORAGE');
   const fg = stages.finishedGoods ?? {};
-  line(doc, 'Quantity', fg.quantity);
-  line(doc, 'Transfer date', fmtDate(fg.transferDate as string));
-  line(doc, 'Storage', fg.storageCondition ?? snap?.storageCondition ?? 'Store at Room Temperature');
-  line(doc, 'Transferred by', sig(fg.transferredBy));
+  drawTable(
+    doc,
+    [
+      { header: 'QUANTITY', width: 80, align: 'center' },
+      { header: 'TRANSFER DATE', width: 90, align: 'center' },
+      { header: 'STORAGE', width: 200 },
+      { header: 'TRANSFERRED BY', width: 125 },
+    ],
+    [[
+      cellText(fg.quantity),
+      fmtDate(fg.transferDate as string),
+      cellText(fg.storageCondition ?? snap?.storageCondition ?? 'Store at Room Temperature'),
+      sig(fg.transferredBy),
+    ]],
+  );
 
-  doc.moveDown(1.2);
+  doc.moveDown(0.8);
   doc.fontSize(8).fillColor('#5a6b76').text(
-    `Generated ${new Date().toLocaleString('en-GB')} · SureTech eBMR · Batch ${batch.batchNo}`,
-    { align: 'center' },
+    `Generated ${new Date().toLocaleString('en-GB')} · SureTech eBMR · 5 pages · Date and time columns are centered`,
+    { align: 'center', width: PAGE_W },
   );
 
   doc.end();
