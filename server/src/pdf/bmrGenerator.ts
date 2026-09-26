@@ -1,6 +1,6 @@
-import PDFDocument from 'pdfkit';
-import { Response } from 'express';
-import { IBatch } from '../models/Batch.js';
+import PDFDocument from "pdfkit";
+import { Response } from "express";
+import { IBatch } from "../models/Batch.js";
 
 /**
  * Introducer Needle BMR PDF
@@ -33,11 +33,11 @@ const BORDER_H = PAGE_H - BORDER_Y * 2;
 const CONTENT_X = 50;
 const CONTENT_W = PAGE_W - CONTENT_X * 2;
 
-const TABLE_LINE = '#777777';
-const BLACK = '#000000';
-const WHITE = '#ffffff';
+const TABLE_LINE = "#777777";
+const BLACK = "#000000";
+const WHITE = "#ffffff";
 
-type Align = 'left' | 'center' | 'right';
+type Align = "left" | "center" | "right";
 
 type TableColumn = {
   header: string;
@@ -51,48 +51,47 @@ type TableRow = {
   bold?: boolean;
 };
 
-function textValue(value: unknown, fallback = ''): string {
-  if (value === undefined || value === null || value === '') return fallback;
-  // Data may contain the two literal characters \\n instead of an actual line break.
-  return String(value).replace(/\\n/g, '\n');
+function textValue(value: unknown, fallback = ""): string {
+  if (value === undefined || value === null || value === "") return fallback;
+  return String(value);
 }
 
 function dash(value: unknown): string {
-  return textValue(value, '—');
+  return textValue(value, "—");
 }
 
 function fmtDate(value?: Date | string | null): string {
-  if (!value) return '';
+  if (!value) return "";
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString('en-GB');
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-GB");
 }
 
 function signature(value: unknown): string {
-  if (!value || typeof value !== 'object') return '';
+  if (!value || typeof value !== "object") return "";
   const s = value as {
     name?: string;
     employeeId?: string;
     signedAt?: string | Date;
   };
 
-  if (!s.name) return '';
+  if (!s.name) return "";
 
-  return `${s.name}${s.employeeId ? ` (${s.employeeId})` : ''}${
-    s.signedAt ? ` @ ${fmtDate(s.signedAt)}` : ''
+  return `${s.name}${s.employeeId ? ` (${s.employeeId})` : ""}${
+    s.signedAt ? ` @ ${fmtDate(s.signedAt)}` : ""
   }`;
 }
 
 function fontNormal(doc: PDFKit.PDFDocument, size = 9) {
-  doc.font('Helvetica').fontSize(size).fillColor(BLACK);
+  doc.font("Helvetica").fontSize(size).fillColor(BLACK);
 }
 
 function fontBold(doc: PDFKit.PDFDocument, size = 9) {
-  doc.font('Helvetica-Bold').fontSize(size).fillColor(BLACK);
+  doc.font("Helvetica-Bold").fontSize(size).fillColor(BLACK);
 }
 
 function fontTimesBold(doc: PDFKit.PDFDocument, size = 12) {
-  doc.font('Times-Bold').fontSize(size).fillColor(BLACK);
+  doc.font("Times-Bold").fontSize(size).fillColor(BLACK);
 }
 
 function drawOuterBorder(doc: PDFKit.PDFDocument) {
@@ -102,48 +101,45 @@ function drawOuterBorder(doc: PDFKit.PDFDocument) {
   doc.restore();
 }
 
-function drawHeader(
-  doc: PDFKit.PDFDocument,
-  pageNo: number,
-) {
+function drawHeader(doc: PDFKit.PDFDocument, pageNo: number) {
   // Company
   fontTimesBold(doc, 12);
-  doc.text('SURETECH MEDICAL INC.', 0, 39, {
+  doc.text("SURETECH MEDICAL INC.", 0, 39, {
     width: PAGE_W,
-    align: 'center',
+    align: "center",
   });
 
   fontTimesBold(doc, 9);
   doc.text(
-    '3/33 Khurana Compound, I.B. Patel Road, Goregaon East, Mumbai-400063',
+    "3/33 Khurana Compound, I.B. Patel Road, Goregaon East, Mumbai-400063",
     0,
     56,
     {
       width: PAGE_W,
-      align: 'center',
+      align: "center",
     },
   );
 
   fontTimesBold(doc, 14);
-  doc.text('BATCH MANUFACTURING RECORD', 0, 78, {
+  doc.text("BATCH MANUFACTURING RECORD", 0, 78, {
     width: PAGE_W,
-    align: 'center',
+    align: "center",
   });
 
   fontTimesBold(doc, 11);
-  doc.text('Doc ID:', 50, 109);
+  doc.text("Doc ID:", 50, 109);
   fontNormal(doc, 11);
-  doc.text('SU/BMR/002', 87, 109);
+  doc.text("SU/BMR/002", 87, 109);
 
   fontTimesBold(doc, 11);
   doc.text(`Page ${pageNo} of 5`, 0, 109, {
     width: PAGE_W - 50,
-    align: 'right',
+    align: "right",
   });
 }
 
 function beginPage(doc: PDFKit.PDFDocument, pageNo: number) {
-  if (pageNo > 1) doc.addPage({ size: 'A4', margin: 0 });
+  if (pageNo > 1) doc.addPage({ size: "A4", margin: 0 });
 
   doc.x = CONTENT_X;
   doc.y = 130;
@@ -161,7 +157,7 @@ function sectionTitle(
   fontBold(doc, fontSize);
   doc.text(title, CONTENT_X, y, {
     width: CONTENT_W,
-    align: 'center',
+    align: "center",
     underline: true,
   });
 }
@@ -175,7 +171,7 @@ function centeredNote(
   fontBold(doc, fontSize);
   doc.text(value, CONTENT_X, y, {
     width: CONTENT_W,
-    align: 'center',
+    align: "center",
   });
 }
 
@@ -194,49 +190,22 @@ function drawTable(
 ) {
   const totalW = columns.reduce((sum, c) => sum + c.width, 0);
 
-  const drawCellText = (
-    value: unknown,
-    cellX: number,
-    cellY: number,
-    cellW: number,
-    cellH: number,
-    bold: boolean,
-    size: number,
-  ) => {
-    const content = textValue(value);
-    if (!content) return;
-
-    if (bold) fontBold(doc, size);
-    else fontNormal(doc, size);
-
-    const padding = 4;
-    const textW = Math.max(1, cellW - padding * 2);
-    const textH = doc.heightOfString(content, {
-      width: textW,
-      lineGap: 1.2,
-    });
-
-    // True vertical centering + horizontal centering inside every cell.
-    const drawH = Math.min(textH, cellH - 4);
-    const textY = cellY + Math.max(2, (cellH - drawH) / 2);
-
-    doc.text(content, cellX + padding, textY, {
-      width: textW,
-      height: cellH - 4,
-      align: 'center',
-      lineGap: 1.2,
-    });
-  };
-
-  // Header background is white.
+  // Header background remains white, matching reference.
   doc.save();
   doc.fillColor(WHITE);
   doc.rect(x, y, totalW, headerHeight).fill();
   doc.restore();
 
+  // Header text.
   let cx = x;
   columns.forEach((col) => {
-    drawCellText(col.header, cx, y, col.width, headerHeight, true, 8.5);
+    fontBold(doc, 8.5);
+    doc.text(col.header, cx + 5, y + 5, {
+      width: col.width - 10,
+      height: headerHeight - 8,
+      align: col.align ?? "left",
+      lineGap: 1.5,
+    });
     cx += col.width;
   });
 
@@ -244,11 +213,15 @@ function drawTable(
   doc.save();
   doc.strokeColor(TABLE_LINE).lineWidth(0.55);
   doc.rect(x, y, totalW, headerHeight).stroke();
+
   cx = x;
   columns.forEach((col, index) => {
     cx += col.width;
     if (index < columns.length - 1) {
-      doc.moveTo(cx, y).lineTo(cx, y + headerHeight).stroke();
+      doc
+        .moveTo(cx, y)
+        .lineTo(cx, y + headerHeight)
+        .stroke();
     }
   });
   doc.restore();
@@ -261,19 +234,33 @@ function drawTable(
     doc.save();
     doc.fillColor(WHITE);
     doc.rect(x, cy, totalW, rowH).fill();
+
     doc.strokeColor(TABLE_LINE).lineWidth(0.55);
     doc.rect(x, cy, totalW, rowH).stroke();
 
     let cellX = x;
+
     row.cells.forEach((value, index) => {
       const col = columns[index];
-      if (!col) return;
+      const content = textValue(value);
 
-      drawCellText(value, cellX, cy, col.width, rowH, !!row.bold, 8.5);
+      if (row.bold) fontBold(doc, 8.5);
+      else fontNormal(doc, 8.5);
+
+      doc.text(content, cellX + 5, cy + 6, {
+        width: col.width - 10,
+        height: rowH - 9,
+        align: col.align ?? "left",
+        lineGap: 1.5,
+      });
+
       cellX += col.width;
 
       if (index < columns.length - 1) {
-        doc.moveTo(cellX, cy).lineTo(cellX, cy + rowH).stroke();
+        doc
+          .moveTo(cellX, cy)
+          .lineTo(cellX, cy + rowH)
+          .stroke();
       }
     });
 
@@ -294,47 +281,42 @@ function drawTwoColumnFields(
   }>,
   x: number,
   y: number,
-  rowHeight = 30,
+  rowHeight = 27,
 ) {
-  // The reference pages visually have no boxes here, but using an invisible
-  // 4-column grid keeps labels/values aligned and prevents collisions.
-  const cols = [145, 115, 150, 85];
-  const totalW = cols.reduce((a, b) => a + b, 0);
+  const half = CONTENT_W / 2;
 
   fields.forEach((field, i) => {
     const yy = y + i * rowHeight;
-    const values = [field.left, field.leftValue, field.right, field.rightValue];
-    let xx = x;
 
-    values.forEach((value, j) => {
-      const w = cols[j];
-      const isLabel = j === 0 || j === 2;
-      const content = textValue(value);
-      if (content) {
-        if (isLabel) fontBold(doc, 8.5);
-        else fontNormal(doc, 8.5);
-
-        const pad = 3;
-        const textW = w - pad * 2;
-        const textH = doc.heightOfString(content, { width: textW, lineGap: 1.2 });
-        const textY = yy + Math.max(1, (rowHeight - Math.min(textH, rowHeight - 2)) / 2);
-
-        doc.text(content, xx + pad, textY, {
-          width: textW,
-          height: rowHeight - 2,
-          align: 'center',
-          lineGap: 1.2,
-        });
-      }
-      xx += w;
+    fontBold(doc, 8.8);
+    doc.text(`${field.left}`, x + 5, yy, {
+      width: half - 15,
+      align: "left",
     });
+
+    if (field.leftValue !== undefined && field.leftValue !== "") {
+      fontNormal(doc, 8.8);
+      doc.text(textValue(field.leftValue), x + 115, yy, {
+        width: half - 125,
+      });
+    }
+
+    fontBold(doc, 8.8);
+    doc.text(`${field.right}`, x + half + 5, yy, {
+      width: half - 15,
+      align: "left",
+    });
+
+    if (field.rightValue !== undefined && field.rightValue !== "") {
+      fontNormal(doc, 8.8);
+      doc.text(textValue(field.rightValue), x + half + 115, yy, {
+        width: half - 125,
+      });
+    }
   });
 }
 
-function drawProductBlock(
-  doc: PDFKit.PDFDocument,
-  batch: IBatch,
-) {
+function drawProductBlock(doc: PDFKit.PDFDocument, batch: IBatch) {
   const x = CONTENT_X;
   const y = 138;
   const w = CONTENT_W;
@@ -345,41 +327,47 @@ function drawProductBlock(
   doc.rect(x, y, w, h).stroke();
 
   // Horizontal split after first product/category row.
-  doc.moveTo(x, y + 61).lineTo(x + w, y + 61).stroke();
+  doc
+    .moveTo(x, y + 61)
+    .lineTo(x + w, y + 61)
+    .stroke();
 
   // Vertical split in lower section.
-  doc.moveTo(x + w / 2, y + 61).lineTo(x + w / 2, y + h).stroke();
+  doc
+    .moveTo(x + w / 2, y + 61)
+    .lineTo(x + w / 2, y + h)
+    .stroke();
   doc.restore();
 
   fontBold(doc, 8.8);
   doc.text(
-    `PRODUCT NAME: ${textValue(batch.productName, 'INTRODUCER NEEDLE.')}`,
+    `PRODUCT NAME: ${textValue(batch.productName, "INTRODUCER NEEDLE.")}`,
     x + 6,
     y + 6,
   );
 
   fontBold(doc, 8.8);
-  doc.text('CATALOGUE NO. :', x + 6, y + 38);
+  doc.text("CATALOGUE NO. :", x + 6, y + 38);
   fontNormal(doc, 8.8);
   doc.text(textValue(batch.catalogueNo), x + 105, y + 38);
 
   fontBold(doc, 8.8);
-  doc.text('BATCH NO. :', x + 6, y + 72);
+  doc.text("BATCH NO. :", x + 6, y + 72);
   fontNormal(doc, 8.8);
   doc.text(textValue(batch.batchNo), x + 75, y + 72);
 
   fontBold(doc, 8.8);
-  doc.text('MFG./ STR DATE:', x + w / 2 + 6, y + 72);
+  doc.text("MFG./ STR DATE:", x + w / 2 + 6, y + 72);
   fontNormal(doc, 8.8);
   doc.text(fmtDate(batch.manufacturingDate), x + w / 2 + 105, y + 72);
 
   fontBold(doc, 8.8);
-  doc.text('BATCH SIZE :', x + 6, y + 102);
+  doc.text("BATCH SIZE :", x + 6, y + 102);
   fontNormal(doc, 8.8);
   doc.text(textValue(batch.batchSize), x + 80, y + 102);
 
   fontBold(doc, 8.8);
-  doc.text('EXPIRY DATE:', x + w / 2 + 6, y + 102);
+  doc.text("EXPIRY DATE:", x + w / 2 + 6, y + 102);
   fontNormal(doc, 8.8);
   doc.text(fmtDate(batch.expiryDate), x + w / 2 + 100, y + 102);
 }
@@ -394,32 +382,33 @@ function drawSignBox(doc: PDFKit.PDFDocument) {
   doc.save();
   doc.strokeColor(BLACK).lineWidth(0.7);
   doc.rect(x, y, w, h).stroke();
-  doc.moveTo(split, y).lineTo(split, y + h).stroke();
+  doc
+    .moveTo(split, y)
+    .lineTo(split, y + h)
+    .stroke();
   doc.restore();
 
   fontTimesBold(doc, 10);
-  doc.text('PRODUCTION CHEMIST', x + 6, y + 7);
-  doc.text('SIGN:', split + 6, y + 7);
+  doc.text("PRODUCTION CHEMIST", x + 6, y + 7);
+  doc.text("SIGN:", split + 6, y + 7);
 }
 
 function rawMaterialRows(stages: Record<string, any>): TableRow[] {
   const rmQc = stages.rawMaterialQc ?? {};
-  const checks = Array.isArray(rmQc.checks)
-    ? rmQc.checks
-    : [];
+  const checks = Array.isArray(rmQc.checks) ? rmQc.checks : [];
 
   const defaults = [
-    'Hub checking',
-    'Bevel checking',
-    'Guide Wire passing',
-    'Visual Inspection: -\nFor Dust, Burrs and\nForeign Particles.',
+    "Hub checking",
+    "Bevel checking",
+    "Guide Wire passing",
+    "Visual Inspection: -\\nFor Dust, Burrs and\\nForeign Particles.",
   ];
 
   const rows: TableRow[] = defaults.map((name, i) => {
     const c = checks[i] ?? {};
     return {
       cells: [
-        `${String(i + 1).padStart(2, '0')}.`,
+        `${String(i + 1).padStart(2, "0")}.`,
         textValue(c.process, name),
         fmtDate(c.processDate),
         textValue(c.startTime),
@@ -435,7 +424,7 @@ function rawMaterialRows(stages: Record<string, any>): TableRow[] {
 
   // Reference has one additional blank row.
   rows.push({
-    cells: ['', '', '', '', '', '', '', ''],
+    cells: ["", "", "", "", "", "", "", ""],
     height: 28,
   });
 
@@ -451,14 +440,14 @@ function consumptionRows(stages: Record<string, any>): TableRow[] {
   // Reference's explanatory first row.
   rows.push({
     cells: [
-      '01.',
-      'The Introducer needle are Purchased from other party and sent for further Processing.',
-      '',
-      '',
-      '',
-      '',
-      '',
-      '',
+      "01.",
+      "The Introducer needle are Purchased from other party and sent for further Processing.",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
     ],
     height: 38,
     bold: true,
@@ -468,14 +457,14 @@ function consumptionRows(stages: Record<string, any>): TableRow[] {
     const item = lines[i] ?? {};
     rows.push({
       cells: [
-        i === 0 ? '' : '',
+        i === 0 ? "" : "",
         textValue(item.rawMaterialName),
         textValue(item.supplierBatchNo),
+        textValue(item.unit),
         fmtDate(item.qualityCheckedDate),
         textValue(item.quantityWithdrawn),
         textValue(item.requirementSlipNo),
-        signature(item.doneBy),
-        signature(item.checkedBy),
+        signature(item.doneBy ?? item.checkedBy),
       ],
       height: 38,
     });
@@ -487,22 +476,27 @@ function consumptionRows(stages: Record<string, any>): TableRow[] {
 function manufacturingRows(stages: Record<string, any>): TableRow[] {
   const mfg = stages.manufacturing ?? {};
 
-  const rows: TableRow[] = [{
-    cells: [
-      '01.',
-      textValue(mfg.process, 'The needles are made Ready for\nSterilization.'),
-      fmtDate(mfg.processDate),
-      textValue(mfg.startTime),
-      textValue(mfg.endTime),
-      signature(mfg.operator),
-    ],
-    height: 48,
-    bold: true,
-  }];
+  const rows: TableRow[] = [
+    {
+      cells: [
+        "01.",
+        textValue(
+          mfg.process,
+          "The needles are made Ready for\\nSterilization.",
+        ),
+        fmtDate(mfg.processDate),
+        textValue(mfg.startTime),
+        textValue(mfg.endTime),
+        signature(mfg.operator),
+      ],
+      height: 48,
+      bold: true,
+    },
+  ];
 
   for (let i = 0; i < 7; i++) {
     rows.push({
-      cells: ['', '', '', '', '', ''],
+      cells: ["", "", "", "", "", ""],
       height: 29,
     });
   }
@@ -516,8 +510,8 @@ function inProcessRows(stages: Record<string, any>): TableRow[] {
   return [
     {
       cells: [
-        '1.',
-        'The Needles are checked Free from\nDust, Burrs and Foreign Particle.',
+        "1.",
+        "The Needles are checked Free from\\nDust, Burrs and Foreign Particle.",
         fmtDate(ipqc.date ?? ipqc.checkedOn),
         textValue(ipqc.observation),
         signature(ipqc.qcCheckedBy ?? ipqc.checkedBy),
@@ -526,7 +520,7 @@ function inProcessRows(stages: Record<string, any>): TableRow[] {
       bold: true,
     },
     {
-      cells: ['2.', '', '', '', ''],
+      cells: ["2.", "", "", "", ""],
       height: 72,
     },
   ];
@@ -534,23 +528,20 @@ function inProcessRows(stages: Record<string, any>): TableRow[] {
 
 export function streamBmrPdf(batch: IBatch, res: Response) {
   const doc = new PDFDocument({
-    size: 'A4',
+    size: "A4",
     margin: 0,
     autoFirstPage: true,
     info: {
-      Title: `BMR - ${batch.batchNo ?? 'Introducer Needle'}`,
-      Author: 'SureTech Medical Inc.',
-      Subject: 'Batch Manufacturing Record',
+      Title: `BMR - ${batch.batchNo ?? "Introducer Needle"}`,
+      Author: "SureTech Medical Inc.",
+      Subject: "Batch Manufacturing Record",
     },
   });
 
-  const filename = `BMR-${batch.batchNo || 'INTRODUCER-NEEDLE'}.pdf`;
+  const filename = `BMR-${batch.batchNo || "INTRODUCER-NEEDLE"}.pdf`;
 
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename="${filename}"`,
-  );
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
   doc.pipe(res);
 
@@ -564,42 +555,42 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
 
   drawProductBlock(doc, batch);
 
-  sectionTitle(doc, 'QUALITY CHECKING OF RAW MATERIAL', 268);
+  sectionTitle(doc, "QUALITY CHECKING OF RAW MATERIAL", 268);
 
   drawTable(
     doc,
     CONTENT_X,
     291,
     [
-      { header: 'Sr.\\nNo.', width: 36 },
-      { header: 'PROCESS', width: 108 },
-      { header: 'DONE\\nON', width: 49 },
-      { header: 'START\\nTIME', width: 49 },
-      { header: 'END\\nTIME', width: 54 },
-      { header: 'OBSERVATION/\\nNOTE', width: 85 },
-      { header: 'DONE BY', width: 59 },
-      { header: 'CHECKED BY', width: 72 },
+      { header: "Sr.\\nNo.", width: 36 },
+      { header: "PROCESS", width: 108 },
+      { header: "DONE\\nON", width: 49 },
+      { header: "START\\nTIME", width: 49 },
+      { header: "END\\nTIME", width: 54 },
+      { header: "OBSERVATION/\\nNOTE", width: 85 },
+      { header: "DONE BY", width: 59 },
+      { header: "CHECKED BY", width: 72 },
     ],
     rawMaterialRows(stages),
     42,
     38,
   );
 
-  sectionTitle(doc, 'RAW MATERIAL CONSUMPTION RECORD', 493);
+  sectionTitle(doc, "RAW MATERIAL CONSUMPTION RECORD", 493);
 
   drawTable(
     doc,
     CONTENT_X,
     520,
     [
-      { header: 'Sr.\\nNo.', width: 36 },
-      { header: 'RAW MATERIAL\\nNAME', width: 86 },
-      { header: 'BATCH\\nNO', width: 58 },
-      { header: 'QUALITY\\nCHECKED\\nON', width: 72 },
-      { header: 'QUANTITY\\nWITHDRAWN', width: 90 },
-      { header: 'REQ. SLIP\\nNO', width: 54 },
-      { header: 'DONE BY', width: 55 },
-      { header: 'CHECKED\\nBY', width: 69 },
+      { header: "Sr.\\nNo.", width: 36 },
+      { header: "RAW MATERIAL\\nNAME", width: 86 },
+      { header: "BATCH\\nNO", width: 58 },
+      { header: "QUALITY\\nCHECKED\\nON", width: 72 },
+      { header: "QUANTITY\\nWITHDRAWN", width: 90 },
+      { header: "REQ. SLIP\\nNO", width: 54 },
+      { header: "DONE BY", width: 55 },
+      { header: "CHECKED\\nBY", width: 69 },
     ],
     consumptionRows(stages),
     56,
@@ -613,37 +604,37 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
   // ============================================================
   beginPage(doc, 2);
 
-  sectionTitle(doc, 'MANUFACTURING PROCESS:', 166);
+  sectionTitle(doc, "MANUFACTURING PROCESS:", 166);
 
   drawTable(
     doc,
     47,
     190,
     [
-      { header: 'Sr. No.', width: 54 },
-      { header: 'PROCESS', width: 200 },
-      { header: 'DONE ON', width: 60 },
-      { header: 'START\\nTIME', width: 63 },
-      { header: 'END TIME', width: 59 },
-      { header: 'DONE BY', width: 67 },
+      { header: "Sr. No.", width: 54 },
+      { header: "PROCESS", width: 200 },
+      { header: "DONE ON", width: 60 },
+      { header: "START\\nTIME", width: 63 },
+      { header: "END TIME", width: 59 },
+      { header: "DONE BY", width: 67 },
     ],
     manufacturingRows(stages),
     42,
     29,
   );
 
-  sectionTitle(doc, 'INPROCESS QUALITY CHECKING:', 482);
+  sectionTitle(doc, "INPROCESS QUALITY CHECKING:", 482);
 
   drawTable(
     doc,
     47,
     518,
     [
-      { header: 'Sr. No.', width: 55 },
-      { header: 'PROCESS', width: 188 },
-      { header: 'DONE ON', width: 60 },
-      { header: 'OBSERVATION / NOTE:', width: 127 },
-      { header: 'DONE BY', width: 59 },
+      { header: "Sr. No.", width: 55 },
+      { header: "PROCESS", width: 188 },
+      { header: "DONE ON", width: 60 },
+      { header: "OBSERVATION / NOTE:", width: 127 },
+      { header: "DONE BY", width: 59 },
     ],
     inProcessRows(stages),
     40,
@@ -662,76 +653,74 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
   const seal = stages.sealing ?? {};
   const ster = stages.sterilization ?? {};
 
-  sectionTitle(doc, 'VISUAL INSPECTION FOR DUST/FOREIGN PARTICLES', 166);
+  sectionTitle(doc, "VISUAL INSPECTION FOR DUST/FOREIGN PARTICLES", 166);
 
   drawTwoColumnFields(
     doc,
     [
       {
-        left: 'NO. OF UNITS CHECKED:',
+        left: "NO. OF UNITS CHECKED:",
         leftValue: vis.unitsChecked,
-        right: 'NO. OF UNITS IN WHICH PARTICLES FOUND:',
+        right: "NO. OF UNITS IN WHICH PARTICLES FOUND:",
         rightValue: vis.particlesFound,
       },
       {
-        left: 'VISUAL INSPECTION DONE ON:',
+        left: "VISUAL INSPECTION DONE ON:",
         leftValue: fmtDate(vis.inspectionDate),
-        right: 'DONE BY:',
+        right: "DONE BY:",
         rightValue: signature(vis.doneBy),
       },
       {
-        left: 'CHECKED BY:',
+        left: "CHECKED BY:",
         leftValue: signature(vis.checkedBy),
-        right: 'TIME:',
+        right: "TIME:",
         rightValue: textValue(vis.time ?? vis.endTime),
       },
     ],
     55,
     193,
-    34,
+    25,
   );
 
-  sectionTitle(doc, 'PACKING RECORD', 292);
+  sectionTitle(doc, "PACKING RECORD", 292);
 
   drawTwoColumnFields(
     doc,
     [
       {
-        left: 'QUANTITY OF POUCHES TAKEN:',
+        left: "QUANTITY OF POUCHES TAKEN:",
         leftValue: pack.pouchesTaken,
-        right: 'PACKING DONE ON:',
+        right: "PACKING DONE ON:",
         rightValue: fmtDate(pack.packingDate),
       },
       {
-        left: 'QUANTITY OF DEVICES PACKED:',
+        left: "QUANTITY OF DEVICES PACKED:",
         leftValue: pack.devicesPacked,
-        right: 'NO. OF POUCHES DAMAGED',
+        right: "NO. OF POUCHES DAMAGED",
         rightValue: pack.pouchesDamaged,
       },
       {
-        left: 'DONE BY:',
+        left: "DONE BY:",
         leftValue: signature(pack.operator ?? pack.doneBy),
-        right: 'CHECKED BY:',
+        right: "CHECKED BY:",
         rightValue: signature(pack.checkedBy),
       },
     ],
     55,
     330,
-    34,
+    25,
   );
 
-  sectionTitle(doc, 'SEALING RECORD', 395);
+  sectionTitle(doc, "SEALING RECORD", 395);
 
   centeredNote(
     doc,
     `At ${textValue(
-      seal.configuredTemperatureC ??
-      snap?.sealingParams?.temperatureC ??
-      200,
-      '200',
+      seal.configuredTemperatureC ?? snap?.sealingParams?.temperatureC ?? 200,
+      "200",
     )}°C FOR PAPER POUCH, OPERATION DONE AS PER ${textValue(
       seal.sopRef ?? snap?.sealingParams?.sopRef,
-      'SOP/MF/011',
+      "SOP/MF/011",
     )}`,
     421,
     8.5,
@@ -741,42 +730,42 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
     doc,
     [
       {
-        left: 'NO. OF DEVICES SEALED:',
+        left: "NO. OF DEVICES SEALED:",
         leftValue: seal.devicesSealed,
-        right: 'SEALING DONE ON:',
+        right: "SEALING DONE ON:",
         rightValue: fmtDate(seal.sealingDate),
       },
       {
-        left: 'DONE BY:',
+        left: "DONE BY:",
         leftValue: signature(seal.operator),
-        right: 'CHECKED BY:',
+        right: "CHECKED BY:",
         rightValue: signature(seal.checkedBy),
       },
     ],
     55,
     455,
-    34,
+    25,
   );
 
-  sectionTitle(doc, 'STERILIZATION RECORD', 528);
+  sectionTitle(doc, "STERILIZATION RECORD", 528);
 
   centeredNote(
     doc,
     `ETO STERILIZATION AT ${textValue(
       ster.configuredTemperatureC ??
-      snap?.sterilizationParams?.temperatureC ??
-      55,
-      '55',
+        snap?.sterilizationParams?.temperatureC ??
+        55,
+      "55",
     )}°C, FOR ${textValue(
       ster.requiredDurationHours ??
-      snap?.sterilizationParams?.durationHours ??
-      4,
-      '4',
+        snap?.sterilizationParams?.durationHours ??
+        4,
+      "4",
     )} HOURS, ${textValue(
       ster.etoCartridgeGrams ??
-      snap?.sterilizationParams?.etoCartridgeGrams ??
-      40,
-      '40',
+        snap?.sterilizationParams?.etoCartridgeGrams ??
+        40,
+      "40",
     )}GM ETO GAS CARTRIDGE USED PER LOT`,
     552,
     8.5,
@@ -786,7 +775,7 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
     doc,
     `OPERATION OF ETO MACHINE AS PER ${textValue(
       ster.sopRef ?? snap?.sterilizationParams?.sopRef,
-      'SOP/MF/008',
+      "SOP/MF/008",
     )}`,
     575,
     9,
@@ -797,12 +786,12 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
     50,
     599,
     [
-      { header: 'DATE', width: 60 },
-      { header: 'QUANTITY', width: 63 },
-      { header: 'START TIME', width: 90 },
-      { header: 'END TIME', width: 86 },
-      { header: 'OPERATOR', width: 94 },
-      { header: 'CHECKED BY', width: 102 },
+      { header: "DATE", width: 60 },
+      { header: "QUANTITY", width: 63 },
+      { header: "START TIME", width: 90 },
+      { header: "END TIME", width: 86 },
+      { header: "OPERATOR", width: 94 },
+      { header: "CHECKED BY", width: 102 },
     ],
     [
       {
@@ -817,7 +806,7 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
         height: 76,
       },
       {
-        cells: ['', '', '', '', '', ''],
+        cells: ["", "", "", "", "", ""],
         height: 39,
       },
     ],
@@ -836,71 +825,73 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
   const st = stages.sterilityTest ?? {};
   const bet = stages.betTest ?? {};
 
-  sectionTitle(doc, 'ETO CARTRIDGE DETAILS', 166);
+  sectionTitle(doc, "ETO CARTRIDGE DETAILS", 166);
 
   drawTable(
     doc,
     47,
     209,
     [
-      { header: 'BATCH NO', width: 118 },
-      { header: 'RECEIVED ON', width: 123 },
-      { header: 'EXPIRY DATE', width: 105 },
-      { header: 'STORAGE CONDITION', width: 137 },
+      { header: "BATCH NO", width: 118 },
+      { header: "RECEIVED ON", width: 123 },
+      { header: "EXPIRY DATE", width: 105 },
+      { header: "STORAGE CONDITION", width: 137 },
     ],
-    [{
-      cells: [
-        textValue(ster.cartridgeBatchNo),
-        fmtDate(ster.cartridgeReceivedOn),
-        fmtDate(ster.cartridgeExpiryDate),
-        textValue(
-          ster.storageCondition ??
-          snap?.storageCondition ??
-          'Store at Room\nTemperature.',
-        ),
-      ],
-      height: 52,
-    }],
+    [
+      {
+        cells: [
+          textValue(ster.cartridgeBatchNo),
+          fmtDate(ster.cartridgeReceivedOn),
+          fmtDate(ster.cartridgeExpiryDate),
+          textValue(
+            ster.storageCondition ??
+              snap?.storageCondition ??
+              "Store at Room\\nTemperature.",
+          ),
+        ],
+        height: 52,
+      },
+    ],
     27,
     52,
   );
 
-  sectionTitle(doc, 'BATCH LABELLING RECORD', 291);
+  sectionTitle(doc, "BATCH LABELLING RECORD", 291);
 
   drawTwoColumnFields(
     doc,
     [
       {
-        left: 'LABELS PRINTED BY:',
+        left: "LABELS PRINTED BY:",
         leftValue: signature(lab.printedBy),
-        right: 'NO. OF LABELS PRINTED:',
+        right: "NO. OF LABELS PRINTED:",
         rightValue: lab.labelsPrinted,
       },
       {
-        left: 'NO. OF DEVICES LABELLED:',
+        left: "NO. OF DEVICES LABELLED:",
         leftValue: lab.devicesLabelled,
-        right: 'NO. OF LABELS DESTROYED:',
+        right: "NO. OF LABELS DESTROYED:",
         rightValue: lab.labelsDestroyed,
       },
       {
-        left: 'DONE ON:',
+        left: "DONE ON:",
         leftValue: fmtDate(lab.doneOn),
-        right: 'CHECKED BY:',
+        right: "CHECKED BY:",
         rightValue: signature(lab.checkedBy),
       },
     ],
     55,
     330,
-    34,
+    25,
   );
 
-  sectionTitle(doc, 'STERILITY TEST RECORD', 416);
+  sectionTitle(doc, "STERILITY TEST RECORD", 419);
 
   centeredNote(
     doc,
     `AS PER SOP NO. ${textValue(
       st.sopRef ?? snap?.sterilitySop,
-      'SOP/QC/004',
+      "SOP/QC/004",
     )}`,
     445,
     8.5,
@@ -910,43 +901,40 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
     doc,
     [
       {
-        left: 'DONE ON:',
+        left: "DONE ON:",
         leftValue: fmtDate(st.testDate ?? st.doneOn),
-        right: 'REPORT NO:',
+        right: "REPORT NO:",
         rightValue: st.reportNo,
       },
       {
-        left: 'RESULT:',
+        left: "RESULT:",
         leftValue: st.result,
-        right: 'REPORTING DATE:',
+        right: "REPORTING DATE:",
         rightValue: fmtDate(st.reportingDate),
       },
       {
-        left: 'START TIME:',
+        left: "START TIME:",
         leftValue: st.startTime,
-        right: 'END TIME:',
+        right: "END TIME:",
         rightValue: st.endTime,
       },
       {
-        left: 'TESTED BY:',
+        left: "TESTED BY:",
         leftValue: signature(st.testedBy),
-        right: 'CHECKED BY:',
+        right: "CHECKED BY:",
         rightValue: signature(st.checkedBy),
       },
     ],
     55,
-    466,
-    34,
+    474,
+    25,
   );
 
-  sectionTitle(doc, 'BET TEST RECORD', 590);
+  sectionTitle(doc, "BET TEST RECORD", 594);
 
   centeredNote(
     doc,
-    `AS PER SOP NO. ${textValue(
-      bet.sopRef ?? snap?.betSop,
-      'SOP/QC/005',
-    )}`,
+    `AS PER SOP NO. ${textValue(bet.sopRef ?? snap?.betSop, "SOP/QC/005")}`,
     620,
     8.5,
   );
@@ -955,33 +943,33 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
     doc,
     [
       {
-        left: 'DONE ON:',
+        left: "DONE ON:",
         leftValue: fmtDate(bet.testDate ?? bet.doneOn),
-        right: 'REPORT NO:',
+        right: "REPORT NO:",
         rightValue: bet.reportNo,
       },
       {
-        left: 'RESULT:',
+        left: "RESULT:",
         leftValue: bet.result,
-        right: 'REPORTING DATE:',
+        right: "REPORTING DATE:",
         rightValue: fmtDate(bet.reportingDate),
       },
       {
-        left: 'START TIME:',
+        left: "START TIME:",
         leftValue: bet.startTime,
-        right: 'END TIME:',
+        right: "END TIME:",
         rightValue: bet.endTime,
       },
       {
-        left: 'TESTED BY:',
+        left: "TESTED BY:",
         leftValue: signature(bet.testedBy),
-        right: 'CHECKED BY:',
+        right: "CHECKED BY:",
         rightValue: signature(bet.checkedBy),
       },
     ],
     55,
-    640,
-    34,
+    648,
+    25,
   );
 
   drawSignBox(doc);
@@ -999,29 +987,31 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
       ? dispatch.records
       : [];
 
-  sectionTitle(doc, 'BATCH PACKING RECORD', 145);
+  sectionTitle(doc, "BATCH PACKING RECORD", 145);
 
   centeredNote(
     doc,
-    'AFTER COMPLIANCE MATERIAL SHIFTED TO FINISHED GOODS',
+    "AFTER COMPLIANCE MATERIAL SHIFTED TO FINISHED GOODS",
     171,
     9,
   );
 
   drawTwoColumnFields(
     doc,
-    [{
-      left: 'NO. OF FINISHED PRODUCTS:',
-      leftValue: fg.quantity,
-      right: 'DATE OF TRANSFER TO FINISHED GOODS:',
-      rightValue: fmtDate(fg.transferDate),
-    }],
+    [
+      {
+        left: "NO. OF FINISHED PRODUCTS:",
+        leftValue: fg.quantity,
+        right: "DATE OF TRANSFER TO FINISHED GOODS:",
+        rightValue: fmtDate(fg.transferDate),
+      },
+    ],
     55,
     199,
-    34,
+    25,
   );
 
-  sectionTitle(doc, 'MATERIAL DISPATCH RECORD', 225);
+  sectionTitle(doc, "MATERIAL DISPATCH RECORD", 225);
 
   const rows: TableRow[] = [];
   for (let i = 0; i < 4; i++) {
@@ -1044,12 +1034,12 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
     40,
     242,
     [
-      { header: 'NAME OF\\nCUSTOMER', width: 81 },
-      { header: 'DATE OF\\nDISPATCH', width: 74 },
-      { header: 'BILL NO.', width: 69 },
-      { header: 'QTY\\nDISPATCHED', width: 84 },
-      { header: 'DISPATCHED BY', width: 84 },
-      { header: 'CHECKED BY', width: 72 },
+      { header: "NAME OF\\nCUSTOMER", width: 81 },
+      { header: "DATE OF\\nDISPATCH", width: 74 },
+      { header: "BILL NO.", width: 69 },
+      { header: "QTY\\nDISPATCHED", width: 84 },
+      { header: "DISPATCHED BY", width: 84 },
+      { header: "CHECKED BY", width: 72 },
     ],
     rows,
     42,
@@ -1060,1060 +1050,6 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
 
   doc.end();
 }
-
-
-// import PDFDocument from "pdfkit";
-// import { Response } from "express";
-// import { IBatch } from "../models/Batch.js";
-
-// /**
-//  * Introducer Needle BMR PDF
-//  * ------------------------------------------------------------
-//  * This renderer intentionally uses fixed A4 coordinates instead of
-//  * PDFKit flow layout so the output follows the supplied reference:
-//  *
-//  * - A4 portrait
-//  * - thin black outer border
-//  * - black/white tables
-//  * - Times-style document heading
-//  * - Helvetica-style form labels
-//  * - centered underlined section headings
-//  * - five fixed pages
-//  * - bottom Production Chemist / Sign box on every page
-//  *
-//  * Reference layout: SURETECH MEDICAL INC.
-//  * 3/33 Khurana Compound, I.B. Patel Road, Goregaon East, Mumbai-400063
-//  * Doc ID: SU/BMR/002
-//  */
-
-// const PAGE_W = 595.28;
-// const PAGE_H = 841.89;
-
-// const BORDER_X = 24;
-// const BORDER_Y = 24;
-// const BORDER_W = PAGE_W - BORDER_X * 2;
-// const BORDER_H = PAGE_H - BORDER_Y * 2;
-
-// const CONTENT_X = 50;
-// const CONTENT_W = PAGE_W - CONTENT_X * 2;
-
-// const TABLE_LINE = "#777777";
-// const BLACK = "#000000";
-// const WHITE = "#ffffff";
-
-// type Align = "left" | "center" | "right";
-
-// type TableColumn = {
-//   header: string;
-//   width: number;
-//   align?: Align;
-// };
-
-// type TableRow = {
-//   cells: unknown[];
-//   height?: number;
-//   bold?: boolean;
-// };
-
-// function textValue(value: unknown, fallback = ""): string {
-//   if (value === undefined || value === null || value === "") return fallback;
-//   return String(value);
-// }
-
-// function dash(value: unknown): string {
-//   return textValue(value, "—");
-// }
-
-// function fmtDate(value?: Date | string | null): string {
-//   if (!value) return "";
-//   const d = new Date(value);
-//   if (Number.isNaN(d.getTime())) return "";
-//   return d.toLocaleDateString("en-GB");
-// }
-
-// function signature(value: unknown): string {
-//   if (!value || typeof value !== "object") return "";
-//   const s = value as {
-//     name?: string;
-//     employeeId?: string;
-//     signedAt?: string | Date;
-//   };
-
-//   if (!s.name) return "";
-
-//   return `${s.name}${s.employeeId ? ` (${s.employeeId})` : ""}${
-//     s.signedAt ? ` @ ${fmtDate(s.signedAt)}` : ""
-//   }`;
-// }
-
-// function fontNormal(doc: PDFKit.PDFDocument, size = 9) {
-//   doc.font("Helvetica").fontSize(size).fillColor(BLACK);
-// }
-
-// function fontBold(doc: PDFKit.PDFDocument, size = 9) {
-//   doc.font("Helvetica-Bold").fontSize(size).fillColor(BLACK);
-// }
-
-// function fontTimesBold(doc: PDFKit.PDFDocument, size = 12) {
-//   doc.font("Times-Bold").fontSize(size).fillColor(BLACK);
-// }
-
-// function drawOuterBorder(doc: PDFKit.PDFDocument) {
-//   doc.save();
-//   doc.strokeColor(BLACK).lineWidth(0.8);
-//   doc.rect(BORDER_X, BORDER_Y, BORDER_W, BORDER_H).stroke();
-//   doc.restore();
-// }
-
-// function drawHeader(doc: PDFKit.PDFDocument, pageNo: number) {
-//   // Company
-//   fontTimesBold(doc, 12);
-//   doc.text("SURETECH MEDICAL INC.", 0, 39, {
-//     width: PAGE_W,
-//     align: "center",
-//   });
-
-//   fontTimesBold(doc, 9);
-//   doc.text(
-//     "3/33 Khurana Compound, I.B. Patel Road, Goregaon East, Mumbai-400063",
-//     0,
-//     56,
-//     {
-//       width: PAGE_W,
-//       align: "center",
-//     },
-//   );
-
-//   fontTimesBold(doc, 14);
-//   doc.text("BATCH MANUFACTURING RECORD", 0, 78, {
-//     width: PAGE_W,
-//     align: "center",
-//   });
-
-//   fontTimesBold(doc, 11);
-//   doc.text("Doc ID:", 50, 109);
-//   fontNormal(doc, 11);
-//   doc.text("SU/BMR/002", 87, 109);
-
-//   fontTimesBold(doc, 11);
-//   doc.text(`Page ${pageNo} of 5`, 0, 109, {
-//     width: PAGE_W - 50,
-//     align: "right",
-//   });
-// }
-
-// function beginPage(doc: PDFKit.PDFDocument, pageNo: number) {
-//   if (pageNo > 1) doc.addPage({ size: "A4", margin: 0 });
-
-//   doc.x = CONTENT_X;
-//   doc.y = 130;
-
-//   drawOuterBorder(doc);
-//   drawHeader(doc, pageNo);
-// }
-
-// function sectionTitle(
-//   doc: PDFKit.PDFDocument,
-//   title: string,
-//   y: number,
-//   fontSize = 10,
-// ) {
-//   fontBold(doc, fontSize);
-//   doc.text(title, CONTENT_X, y, {
-//     width: CONTENT_W,
-//     align: "center",
-//     underline: true,
-//   });
-// }
-
-// function centeredNote(
-//   doc: PDFKit.PDFDocument,
-//   value: string,
-//   y: number,
-//   fontSize = 9,
-// ) {
-//   fontBold(doc, fontSize);
-//   doc.text(value, CONTENT_X, y, {
-//     width: CONTENT_W,
-//     align: "center",
-//   });
-// }
-
-// /**
-//  * Generic fixed-coordinate table.
-//  * Header is white, borders are thin grey/black, and no colored fill is used.
-//  */
-// function drawTable(
-//   doc: PDFKit.PDFDocument,
-//   x: number,
-//   y: number,
-//   columns: TableColumn[],
-//   rows: TableRow[],
-//   headerHeight = 42,
-//   bodyDefaultHeight = 38,
-// ) {
-//   const totalW = columns.reduce((sum, c) => sum + c.width, 0);
-
-//   // Header background remains white, matching reference.
-//   doc.save();
-//   doc.fillColor(WHITE);
-//   doc.rect(x, y, totalW, headerHeight).fill();
-//   doc.restore();
-
-//   // Header text.
-//   let cx = x;
-//   columns.forEach((col) => {
-//     fontBold(doc, 8.5);
-//     doc.text(col.header, cx + 5, y + 5, {
-//       width: col.width - 10,
-//       height: headerHeight - 8,
-//       align: col.align ?? "left",
-//       lineGap: 1.5,
-//     });
-//     cx += col.width;
-//   });
-
-//   // Header borders.
-//   doc.save();
-//   doc.strokeColor(TABLE_LINE).lineWidth(0.55);
-//   doc.rect(x, y, totalW, headerHeight).stroke();
-
-//   cx = x;
-//   columns.forEach((col, index) => {
-//     cx += col.width;
-//     if (index < columns.length - 1) {
-//       doc
-//         .moveTo(cx, y)
-//         .lineTo(cx, y + headerHeight)
-//         .stroke();
-//     }
-//   });
-//   doc.restore();
-
-//   let cy = y + headerHeight;
-
-//   rows.forEach((row) => {
-//     const rowH = row.height ?? bodyDefaultHeight;
-
-//     doc.save();
-//     doc.fillColor(WHITE);
-//     doc.rect(x, cy, totalW, rowH).fill();
-
-//     doc.strokeColor(TABLE_LINE).lineWidth(0.55);
-//     doc.rect(x, cy, totalW, rowH).stroke();
-
-//     let cellX = x;
-
-//     row.cells.forEach((value, index) => {
-//       const col = columns[index];
-//       const content = textValue(value);
-
-//       if (row.bold) fontBold(doc, 8.5);
-//       else fontNormal(doc, 8.5);
-
-//       doc.text(content, cellX + 5, cy + 6, {
-//         width: col.width - 10,
-//         height: rowH - 9,
-//         align: col.align ?? "left",
-//         lineGap: 1.5,
-//       });
-
-//       cellX += col.width;
-
-//       if (index < columns.length - 1) {
-//         doc
-//           .moveTo(cellX, cy)
-//           .lineTo(cellX, cy + rowH)
-//           .stroke();
-//       }
-//     });
-
-//     doc.restore();
-//     cy += rowH;
-//   });
-
-//   return cy;
-// }
-
-// function drawTwoColumnFields(
-//   doc: PDFKit.PDFDocument,
-//   fields: Array<{
-//     left: string;
-//     leftValue?: unknown;
-//     right: string;
-//     rightValue?: unknown;
-//   }>,
-//   x: number,
-//   y: number,
-//   rowHeight = 27,
-// ) {
-//   const half = CONTENT_W / 2;
-
-//   fields.forEach((field, i) => {
-//     const yy = y + i * rowHeight;
-
-//     fontBold(doc, 8.8);
-//     doc.text(`${field.left}`, x + 5, yy, {
-//       width: half - 15,
-//       align: "left",
-//     });
-
-//     if (field.leftValue !== undefined && field.leftValue !== "") {
-//       fontNormal(doc, 8.8);
-//       doc.text(textValue(field.leftValue), x + 115, yy, {
-//         width: half - 125,
-//       });
-//     }
-
-//     fontBold(doc, 8.8);
-//     doc.text(`${field.right}`, x + half + 5, yy, {
-//       width: half - 15,
-//       align: "left",
-//     });
-
-//     if (field.rightValue !== undefined && field.rightValue !== "") {
-//       fontNormal(doc, 8.8);
-//       doc.text(textValue(field.rightValue), x + half + 115, yy, {
-//         width: half - 125,
-//       });
-//     }
-//   });
-// }
-
-// function drawProductBlock(doc: PDFKit.PDFDocument, batch: IBatch) {
-//   const x = CONTENT_X;
-//   const y = 138;
-//   const w = CONTENT_W;
-//   const h = 128;
-
-//   doc.save();
-//   doc.strokeColor(BLACK).lineWidth(0.7);
-//   doc.rect(x, y, w, h).stroke();
-
-//   // Horizontal split after first product/category row.
-//   doc
-//     .moveTo(x, y + 61)
-//     .lineTo(x + w, y + 61)
-//     .stroke();
-
-//   // Vertical split in lower section.
-//   doc
-//     .moveTo(x + w / 2, y + 61)
-//     .lineTo(x + w / 2, y + h)
-//     .stroke();
-//   doc.restore();
-
-//   fontBold(doc, 8.8);
-//   doc.text(
-//     `PRODUCT NAME: ${textValue(batch.productName, "INTRODUCER NEEDLE.")}`,
-//     x + 6,
-//     y + 6,
-//   );
-
-//   fontBold(doc, 8.8);
-//   doc.text("CATALOGUE NO. :", x + 6, y + 38);
-//   fontNormal(doc, 8.8);
-//   doc.text(textValue(batch.catalogueNo), x + 105, y + 38);
-
-//   fontBold(doc, 8.8);
-//   doc.text("BATCH NO. :", x + 6, y + 72);
-//   fontNormal(doc, 8.8);
-//   doc.text(textValue(batch.batchNo), x + 75, y + 72);
-
-//   fontBold(doc, 8.8);
-//   doc.text("MFG./ STR DATE:", x + w / 2 + 6, y + 72);
-//   fontNormal(doc, 8.8);
-//   doc.text(fmtDate(batch.manufacturingDate), x + w / 2 + 105, y + 72);
-
-//   fontBold(doc, 8.8);
-//   doc.text("BATCH SIZE :", x + 6, y + 102);
-//   fontNormal(doc, 8.8);
-//   doc.text(textValue(batch.batchSize), x + 80, y + 102);
-
-//   fontBold(doc, 8.8);
-//   doc.text("EXPIRY DATE:", x + w / 2 + 6, y + 102);
-//   fontNormal(doc, 8.8);
-//   doc.text(fmtDate(batch.expiryDate), x + w / 2 + 100, y + 102);
-// }
-
-// function drawSignBox(doc: PDFKit.PDFDocument) {
-//   const x = 41;
-//   const y = 763;
-//   const w = PAGE_W - 82;
-//   const h = 29;
-//   const split = x + w / 2;
-
-//   doc.save();
-//   doc.strokeColor(BLACK).lineWidth(0.7);
-//   doc.rect(x, y, w, h).stroke();
-//   doc
-//     .moveTo(split, y)
-//     .lineTo(split, y + h)
-//     .stroke();
-//   doc.restore();
-
-//   fontTimesBold(doc, 10);
-//   doc.text("PRODUCTION CHEMIST", x + 6, y + 7);
-//   doc.text("SIGN:", split + 6, y + 7);
-// }
-
-// function rawMaterialRows(stages: Record<string, any>): TableRow[] {
-//   const rmQc = stages.rawMaterialQc ?? {};
-//   const checks = Array.isArray(rmQc.checks) ? rmQc.checks : [];
-
-//   const defaults = [
-//     "Hub checking",
-//     "Bevel checking",
-//     "Guide Wire passing",
-//     "Visual Inspection: -\\nFor Dust, Burrs and\\nForeign Particles.",
-//   ];
-
-//   const rows: TableRow[] = defaults.map((name, i) => {
-//     const c = checks[i] ?? {};
-//     return {
-//       cells: [
-//         `${String(i + 1).padStart(2, "0")}.`,
-//         textValue(c.process, name),
-//         fmtDate(c.processDate),
-//         textValue(c.startTime),
-//         textValue(c.endTime),
-//         textValue(c.observation),
-//         signature(c.doneBy),
-//         signature(c.checkedBy),
-//       ],
-//       height: i === 3 ? 63 : 38,
-//       bold: true,
-//     };
-//   });
-
-//   // Reference has one additional blank row.
-//   rows.push({
-//     cells: ["", "", "", "", "", "", "", ""],
-//     height: 28,
-//   });
-
-//   return rows;
-// }
-
-// function consumptionRows(stages: Record<string, any>): TableRow[] {
-//   const cons = stages.rawMaterialConsumption ?? {};
-//   const lines = Array.isArray(cons.lines) ? cons.lines : [];
-
-//   const rows: TableRow[] = [];
-
-//   // Reference's explanatory first row.
-//   rows.push({
-//     cells: [
-//       "01.",
-//       "The Introducer needle are Purchased from other party and sent for further Processing.",
-//       "",
-//       "",
-//       "",
-//       "",
-//       "",
-//       "",
-//     ],
-//     height: 38,
-//     bold: true,
-//   });
-
-//   for (let i = 0; i < 5; i++) {
-//     const item = lines[i] ?? {};
-//     rows.push({
-//       cells: [
-//         i === 0 ? "" : "",
-//         textValue(item.rawMaterialName),
-//         textValue(item.supplierBatchNo),
-//         textValue(item.unit),
-//         fmtDate(item.qualityCheckedDate),
-//         textValue(item.quantityWithdrawn),
-//         textValue(item.requirementSlipNo),
-//         signature(item.doneBy ?? item.checkedBy),
-//       ],
-//       height: 38,
-//     });
-//   }
-
-//   return rows;
-// }
-
-// function manufacturingRows(stages: Record<string, any>): TableRow[] {
-//   const mfg = stages.manufacturing ?? {};
-
-//   const rows: TableRow[] = [
-//     {
-//       cells: [
-//         "01.",
-//         textValue(
-//           mfg.process,
-//           "The needles are made Ready for\\nSterilization.",
-//         ),
-//         fmtDate(mfg.processDate),
-//         textValue(mfg.startTime),
-//         textValue(mfg.endTime),
-//         signature(mfg.operator),
-//       ],
-//       height: 48,
-//       bold: true,
-//     },
-//   ];
-
-//   for (let i = 0; i < 7; i++) {
-//     rows.push({
-//       cells: ["", "", "", "", "", ""],
-//       height: 29,
-//     });
-//   }
-
-//   return rows;
-// }
-
-// function inProcessRows(stages: Record<string, any>): TableRow[] {
-//   const ipqc = stages.inProcessQc ?? {};
-
-//   return [
-//     {
-//       cells: [
-//         "1.",
-//         "The Needles are checked Free from\\nDust, Burrs and Foreign Particle.",
-//         fmtDate(ipqc.date ?? ipqc.checkedOn),
-//         textValue(ipqc.observation),
-//         signature(ipqc.qcCheckedBy ?? ipqc.checkedBy),
-//       ],
-//       height: 63,
-//       bold: true,
-//     },
-//     {
-//       cells: ["2.", "", "", "", ""],
-//       height: 72,
-//     },
-//   ];
-// }
-
-// export function streamBmrPdf(batch: IBatch, res: Response) {
-//   const doc = new PDFDocument({
-//     size: "A4",
-//     margin: 0,
-//     autoFirstPage: true,
-//     info: {
-//       Title: `BMR - ${batch.batchNo ?? "Introducer Needle"}`,
-//       Author: "SureTech Medical Inc.",
-//       Subject: "Batch Manufacturing Record",
-//     },
-//   });
-
-//   const filename = `BMR-${batch.batchNo || "INTRODUCER-NEEDLE"}.pdf`;
-
-//   res.setHeader("Content-Type", "application/pdf");
-//   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-
-//   doc.pipe(res);
-
-//   const stages = (batch.stages ?? {}) as Record<string, any>;
-//   const snap = batch.processParamsSnapshot as any;
-
-//   // ============================================================
-//   // PAGE 1
-//   // ============================================================
-//   beginPage(doc, 1);
-
-//   drawProductBlock(doc, batch);
-
-//   sectionTitle(doc, "QUALITY CHECKING OF RAW MATERIAL", 268);
-
-//   drawTable(
-//     doc,
-//     CONTENT_X,
-//     291,
-//     [
-//       { header: "Sr.\\nNo.", width: 36 },
-//       { header: "PROCESS", width: 108 },
-//       { header: "DONE\\nON", width: 49 },
-//       { header: "START\\nTIME", width: 49 },
-//       { header: "END\\nTIME", width: 54 },
-//       { header: "OBSERVATION/\\nNOTE", width: 85 },
-//       { header: "DONE BY", width: 59 },
-//       { header: "CHECKED BY", width: 72 },
-//     ],
-//     rawMaterialRows(stages),
-//     42,
-//     38,
-//   );
-
-//   sectionTitle(doc, "RAW MATERIAL CONSUMPTION RECORD", 493);
-
-//   drawTable(
-//     doc,
-//     CONTENT_X,
-//     520,
-//     [
-//       { header: "Sr.\\nNo.", width: 36 },
-//       { header: "RAW MATERIAL\\nNAME", width: 86 },
-//       { header: "BATCH\\nNO", width: 58 },
-//       { header: "QUALITY\\nCHECKED\\nON", width: 72 },
-//       { header: "QUANTITY\\nWITHDRAWN", width: 90 },
-//       { header: "REQ. SLIP\\nNO", width: 54 },
-//       { header: "DONE BY", width: 55 },
-//       { header: "CHECKED\\nBY", width: 69 },
-//     ],
-//     consumptionRows(stages),
-//     56,
-//     38,
-//   );
-
-//   drawSignBox(doc);
-
-//   // ============================================================
-//   // PAGE 2
-//   // ============================================================
-//   beginPage(doc, 2);
-
-//   sectionTitle(doc, "MANUFACTURING PROCESS:", 166);
-
-//   drawTable(
-//     doc,
-//     47,
-//     190,
-//     [
-//       { header: "Sr. No.", width: 54 },
-//       { header: "PROCESS", width: 200 },
-//       { header: "DONE ON", width: 60 },
-//       { header: "START\\nTIME", width: 63 },
-//       { header: "END TIME", width: 59 },
-//       { header: "DONE BY", width: 67 },
-//     ],
-//     manufacturingRows(stages),
-//     42,
-//     29,
-//   );
-
-//   sectionTitle(doc, "INPROCESS QUALITY CHECKING:", 482);
-
-//   drawTable(
-//     doc,
-//     47,
-//     518,
-//     [
-//       { header: "Sr. No.", width: 55 },
-//       { header: "PROCESS", width: 188 },
-//       { header: "DONE ON", width: 60 },
-//       { header: "OBSERVATION / NOTE:", width: 127 },
-//       { header: "DONE BY", width: 59 },
-//     ],
-//     inProcessRows(stages),
-//     40,
-//     63,
-//   );
-
-//   drawSignBox(doc);
-
-//   // ============================================================
-//   // PAGE 3
-//   // ============================================================
-//   beginPage(doc, 3);
-
-//   const vis = stages.visualInspection ?? {};
-//   const pack = stages.packing ?? {};
-//   const seal = stages.sealing ?? {};
-//   const ster = stages.sterilization ?? {};
-
-//   sectionTitle(doc, "VISUAL INSPECTION FOR DUST/FOREIGN PARTICLES", 166);
-
-//   drawTwoColumnFields(
-//     doc,
-//     [
-//       {
-//         left: "NO. OF UNITS CHECKED:",
-//         leftValue: vis.unitsChecked,
-//         right: "NO. OF UNITS IN WHICH PARTICLES FOUND:",
-//         rightValue: vis.particlesFound,
-//       },
-//       {
-//         left: "VISUAL INSPECTION DONE ON:",
-//         leftValue: fmtDate(vis.inspectionDate),
-//         right: "DONE BY:",
-//         rightValue: signature(vis.doneBy),
-//       },
-//       {
-//         left: "CHECKED BY:",
-//         leftValue: signature(vis.checkedBy),
-//         right: "TIME:",
-//         rightValue: textValue(vis.time ?? vis.endTime),
-//       },
-//     ],
-//     55,
-//     193,
-//     25,
-//   );
-
-//   sectionTitle(doc, "PACKING RECORD", 292);
-
-//   drawTwoColumnFields(
-//     doc,
-//     [
-//       {
-//         left: "QUANTITY OF POUCHES TAKEN:",
-//         leftValue: pack.pouchesTaken,
-//         right: "PACKING DONE ON:",
-//         rightValue: fmtDate(pack.packingDate),
-//       },
-//       {
-//         left: "QUANTITY OF DEVICES PACKED:",
-//         leftValue: pack.devicesPacked,
-//         right: "NO. OF POUCHES DAMAGED",
-//         rightValue: pack.pouchesDamaged,
-//       },
-//       {
-//         left: "DONE BY:",
-//         leftValue: signature(pack.operator ?? pack.doneBy),
-//         right: "CHECKED BY:",
-//         rightValue: signature(pack.checkedBy),
-//       },
-//     ],
-//     55,
-//     330,
-//     25,
-//   );
-
-//   sectionTitle(doc, "SEALING RECORD", 395);
-
-//   centeredNote(
-//     doc,
-//     `At ${textValue(
-//       seal.configuredTemperatureC ?? snap?.sealingParams?.temperatureC ?? 200,
-//       "200",
-//     )}°C FOR PAPER POUCH, OPERATION DONE AS PER ${textValue(
-//       seal.sopRef ?? snap?.sealingParams?.sopRef,
-//       "SOP/MF/011",
-//     )}`,
-//     421,
-//     8.5,
-//   );
-
-//   drawTwoColumnFields(
-//     doc,
-//     [
-//       {
-//         left: "NO. OF DEVICES SEALED:",
-//         leftValue: seal.devicesSealed,
-//         right: "SEALING DONE ON:",
-//         rightValue: fmtDate(seal.sealingDate),
-//       },
-//       {
-//         left: "DONE BY:",
-//         leftValue: signature(seal.operator),
-//         right: "CHECKED BY:",
-//         rightValue: signature(seal.checkedBy),
-//       },
-//     ],
-//     55,
-//     455,
-//     25,
-//   );
-
-//   sectionTitle(doc, "STERILIZATION RECORD", 528);
-
-//   centeredNote(
-//     doc,
-//     `ETO STERILIZATION AT ${textValue(
-//       ster.configuredTemperatureC ??
-//         snap?.sterilizationParams?.temperatureC ??
-//         55,
-//       "55",
-//     )}°C, FOR ${textValue(
-//       ster.requiredDurationHours ??
-//         snap?.sterilizationParams?.durationHours ??
-//         4,
-//       "4",
-//     )} HOURS, ${textValue(
-//       ster.etoCartridgeGrams ??
-//         snap?.sterilizationParams?.etoCartridgeGrams ??
-//         40,
-//       "40",
-//     )}GM ETO GAS CARTRIDGE USED PER LOT`,
-//     552,
-//     8.5,
-//   );
-
-//   centeredNote(
-//     doc,
-//     `OPERATION OF ETO MACHINE AS PER ${textValue(
-//       ster.sopRef ?? snap?.sterilizationParams?.sopRef,
-//       "SOP/MF/008",
-//     )}`,
-//     575,
-//     9,
-//   );
-
-//   drawTable(
-//     doc,
-//     50,
-//     599,
-//     [
-//       { header: "DATE", width: 60 },
-//       { header: "QUANTITY", width: 63 },
-//       { header: "START TIME", width: 90 },
-//       { header: "END TIME", width: 86 },
-//       { header: "OPERATOR", width: 94 },
-//       { header: "CHECKED BY", width: 102 },
-//     ],
-//     [
-//       {
-//         cells: [
-//           fmtDate(ster.startDate ?? ster.date),
-//           textValue(ster.quantity),
-//           textValue(ster.startTime),
-//           textValue(ster.endTime),
-//           signature(ster.operator),
-//           signature(ster.checkedBy),
-//         ],
-//         height: 76,
-//       },
-//       {
-//         cells: ["", "", "", "", "", ""],
-//         height: 39,
-//       },
-//     ],
-//     40,
-//     76,
-//   );
-
-//   drawSignBox(doc);
-
-//   // ============================================================
-//   // PAGE 4
-//   // ============================================================
-//   beginPage(doc, 4);
-
-//   const lab = stages.labelling ?? {};
-//   const st = stages.sterilityTest ?? {};
-//   const bet = stages.betTest ?? {};
-
-//   sectionTitle(doc, "ETO CARTRIDGE DETAILS", 166);
-
-//   drawTable(
-//     doc,
-//     47,
-//     209,
-//     [
-//       { header: "BATCH NO", width: 118 },
-//       { header: "RECEIVED ON", width: 123 },
-//       { header: "EXPIRY DATE", width: 105 },
-//       { header: "STORAGE CONDITION", width: 137 },
-//     ],
-//     [
-//       {
-//         cells: [
-//           textValue(ster.cartridgeBatchNo),
-//           fmtDate(ster.cartridgeReceivedOn),
-//           fmtDate(ster.cartridgeExpiryDate),
-//           textValue(
-//             ster.storageCondition ??
-//               snap?.storageCondition ??
-//               "Store at Room\\nTemperature.",
-//           ),
-//         ],
-//         height: 52,
-//       },
-//     ],
-//     27,
-//     52,
-//   );
-
-//   sectionTitle(doc, "BATCH LABELLING RECORD", 291);
-
-//   drawTwoColumnFields(
-//     doc,
-//     [
-//       {
-//         left: "LABELS PRINTED BY:",
-//         leftValue: signature(lab.printedBy),
-//         right: "NO. OF LABELS PRINTED:",
-//         rightValue: lab.labelsPrinted,
-//       },
-//       {
-//         left: "NO. OF DEVICES LABELLED:",
-//         leftValue: lab.devicesLabelled,
-//         right: "NO. OF LABELS DESTROYED:",
-//         rightValue: lab.labelsDestroyed,
-//       },
-//       {
-//         left: "DONE ON:",
-//         leftValue: fmtDate(lab.doneOn),
-//         right: "CHECKED BY:",
-//         rightValue: signature(lab.checkedBy),
-//       },
-//     ],
-//     55,
-//     330,
-//     25,
-//   );
-
-//   sectionTitle(doc, "STERILITY TEST RECORD", 419);
-
-//   centeredNote(
-//     doc,
-//     `AS PER SOP NO. ${textValue(
-//       st.sopRef ?? snap?.sterilitySop,
-//       "SOP/QC/004",
-//     )}`,
-//     445,
-//     8.5,
-//   );
-
-//   drawTwoColumnFields(
-//     doc,
-//     [
-//       {
-//         left: "DONE ON:",
-//         leftValue: fmtDate(st.testDate ?? st.doneOn),
-//         right: "REPORT NO:",
-//         rightValue: st.reportNo,
-//       },
-//       {
-//         left: "RESULT:",
-//         leftValue: st.result,
-//         right: "REPORTING DATE:",
-//         rightValue: fmtDate(st.reportingDate),
-//       },
-//       {
-//         left: "START TIME:",
-//         leftValue: st.startTime,
-//         right: "END TIME:",
-//         rightValue: st.endTime,
-//       },
-//       {
-//         left: "TESTED BY:",
-//         leftValue: signature(st.testedBy),
-//         right: "CHECKED BY:",
-//         rightValue: signature(st.checkedBy),
-//       },
-//     ],
-//     55,
-//     474,
-//     25,
-//   );
-
-//   sectionTitle(doc, "BET TEST RECORD", 594);
-
-//   centeredNote(
-//     doc,
-//     `AS PER SOP NO. ${textValue(bet.sopRef ?? snap?.betSop, "SOP/QC/005")}`,
-//     620,
-//     8.5,
-//   );
-
-//   drawTwoColumnFields(
-//     doc,
-//     [
-//       {
-//         left: "DONE ON:",
-//         leftValue: fmtDate(bet.testDate ?? bet.doneOn),
-//         right: "REPORT NO:",
-//         rightValue: bet.reportNo,
-//       },
-//       {
-//         left: "RESULT:",
-//         leftValue: bet.result,
-//         right: "REPORTING DATE:",
-//         rightValue: fmtDate(bet.reportingDate),
-//       },
-//       {
-//         left: "START TIME:",
-//         leftValue: bet.startTime,
-//         right: "END TIME:",
-//         rightValue: bet.endTime,
-//       },
-//       {
-//         left: "TESTED BY:",
-//         leftValue: signature(bet.testedBy),
-//         right: "CHECKED BY:",
-//         rightValue: signature(bet.checkedBy),
-//       },
-//     ],
-//     55,
-//     648,
-//     25,
-//   );
-
-//   drawSignBox(doc);
-
-//   // ============================================================
-//   // PAGE 5
-//   // ============================================================
-//   beginPage(doc, 5);
-
-//   const fg = stages.finishedGoods ?? {};
-//   const dispatch = stages.materialDispatch ?? stages.dispatch ?? {};
-//   const dispatchRows = Array.isArray(dispatch.rows)
-//     ? dispatch.rows
-//     : Array.isArray(dispatch.records)
-//       ? dispatch.records
-//       : [];
-
-//   sectionTitle(doc, "BATCH PACKING RECORD", 145);
-
-//   centeredNote(
-//     doc,
-//     "AFTER COMPLIANCE MATERIAL SHIFTED TO FINISHED GOODS",
-//     171,
-//     9,
-//   );
-
-//   drawTwoColumnFields(
-//     doc,
-//     [
-//       {
-//         left: "NO. OF FINISHED PRODUCTS:",
-//         leftValue: fg.quantity,
-//         right: "DATE OF TRANSFER TO FINISHED GOODS:",
-//         rightValue: fmtDate(fg.transferDate),
-//       },
-//     ],
-//     55,
-//     199,
-//     25,
-//   );
-
-//   sectionTitle(doc, "MATERIAL DISPATCH RECORD", 225);
-
-//   const rows: TableRow[] = [];
-//   for (let i = 0; i < 4; i++) {
-//     const r = dispatchRows[i] ?? {};
-//     rows.push({
-//       cells: [
-//         textValue(r.customerName ?? r.nameOfCustomer),
-//         fmtDate(r.dispatchDate ?? r.dateOfDispatch),
-//         textValue(r.billNo),
-//         textValue(r.quantityDispatched ?? r.quantity),
-//         signature(r.dispatchedBy),
-//         signature(r.checkedBy),
-//       ],
-//       height: 76,
-//     });
-//   }
-
-//   drawTable(
-//     doc,
-//     40,
-//     242,
-//     [
-//       { header: "NAME OF\\nCUSTOMER", width: 81 },
-//       { header: "DATE OF\\nDISPATCH", width: 74 },
-//       { header: "BILL NO.", width: 69 },
-//       { header: "QTY\\nDISPATCHED", width: 84 },
-//       { header: "DISPATCHED BY", width: 84 },
-//       { header: "CHECKED BY", width: 72 },
-//     ],
-//     rows,
-//     42,
-//     76,
-//   );
-
-//   drawSignBox(doc);
-
-//   doc.end();
-// }
 
 // import PDFDocument from 'pdfkit';
 // import { Response } from 'express';
