@@ -21,6 +21,91 @@ function fmtDate(value?: Date | string | null) {
   return d.toLocaleDateString('en-GB');
 }
 
+type Col = {
+  header: string;
+  width: number;
+  align?: 'left' | 'center' | 'right';
+};
+
+function cellText(value: unknown) {
+  if (value === undefined || value === null || value === '') return '—';
+  return String(value);
+}
+
+/** Draws a bordered table. Date/time columns should use align: 'center'. */
+function drawTable(
+  doc: PDFKit.PDFDocument,
+  columns: Col[],
+  rows: string[][],
+) {
+  const startX = doc.page.margins.left;
+  const pageBottom = doc.page.height - doc.page.margins.bottom;
+  const headerH = 18;
+  const pad = 3;
+
+  const paintHeader = (y: number) => {
+    let x = startX;
+    doc.save();
+    doc.rect(startX, y, columns.reduce((s, c) => s + c.width, 0), headerH).fill('#e8f4f8');
+    doc.restore();
+    doc.fontSize(7).fillColor('#0b4f6c');
+    for (const col of columns) {
+      doc.text(col.header, x + pad, y + 5, {
+        width: col.width - pad * 2,
+        align: col.align ?? 'left',
+        lineBreak: false,
+      });
+      x += col.width;
+    }
+    doc.strokeColor('#d5dee5').lineWidth(0.4);
+    x = startX;
+    const totalW = columns.reduce((s, c) => s + c.width, 0);
+    doc.rect(startX, y, totalW, headerH).stroke();
+    for (const col of columns) {
+      x += col.width;
+      doc.moveTo(x, y).lineTo(x, y + headerH).stroke();
+    }
+    return y + headerH;
+  };
+
+  let y = doc.y;
+  if (y + headerH + 20 > pageBottom) {
+    doc.addPage();
+    y = doc.page.margins.top;
+  }
+  y = paintHeader(y);
+
+  doc.fontSize(8).fillColor('#14212b');
+  for (const row of rows) {
+    const heights = row.map((text, i) =>
+      doc.heightOfString(cellText(text), { width: columns[i].width - pad * 2 }),
+    );
+    const rowH = Math.max(16, ...heights) + 6;
+    if (y + rowH > pageBottom) {
+      doc.addPage();
+      y = paintHeader(doc.page.margins.top);
+    }
+    let x = startX;
+    const totalW = columns.reduce((s, c) => s + c.width, 0);
+    doc.strokeColor('#d5dee5').lineWidth(0.4);
+    doc.rect(startX, y, totalW, rowH).stroke();
+    row.forEach((text, i) => {
+      const col = columns[i];
+      doc.fillColor('#14212b').text(cellText(text), x + pad, y + 4, {
+        width: col.width - pad * 2,
+        align: col.align ?? 'left',
+      });
+      x += col.width;
+      if (i < row.length - 1) {
+        doc.moveTo(x, y).lineTo(x, y + rowH).stroke();
+      }
+    });
+    y += rowH;
+  }
+  doc.y = y + 6;
+  doc.x = startX;
+}
+
 function sig(value: unknown) {
   if (!value || typeof value !== 'object') return '—';
   const s = value as { name?: string; employeeId?: string; signedAt?: string | Date };
@@ -66,11 +151,26 @@ export function streamBmrPdf(batch: IBatch, res: Response) {
   if (checks.length === 0) {
     doc.text('No entries.');
   } else {
-    checks.forEach((c, i) => {
-      doc.text(
-        `${i + 1}. ${c.process} — ${c.result ?? '—'} | ${fmtDate(c.processDate as string)} | Obs: ${c.observation ?? '—'}`,
-      );
-    });
+    // Same columns as the on-screen Quality Check table. Date and times are centered.
+    drawTable(
+      doc,
+      [
+        { header: 'PROCESS', width: 140, align: 'left' },
+        { header: 'DATE', width: 68, align: 'center' },
+        { header: 'START', width: 48, align: 'center' },
+        { header: 'END', width: 48, align: 'center' },
+        { header: 'OBSERVATION', width: 140, align: 'left' },
+        { header: 'RESULT', width: 51, align: 'center' },
+      ],
+      checks.map((c) => [
+        cellText(c.process),
+        fmtDate(c.processDate as string),
+        cellText(c.startTime),
+        cellText(c.endTime),
+        cellText(c.observation),
+        cellText(c.result),
+      ]),
+    );
   }
   line(doc, 'Overall', rmQc.overallResult);
   line(doc, 'Approved by', sig(rmQc.approvedBy));

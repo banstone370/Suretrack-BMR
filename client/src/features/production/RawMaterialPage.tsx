@@ -224,7 +224,7 @@ export function RawMaterialPage() {
                     type="date"
                     value={sharedDate}
                     onChange={(e) => setSharedDate(e.target.value)}
-                    className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-sm text-ink"
+                    className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-center text-sm text-ink"
                   />
                 </label>
                 <label className="text-xs font-medium text-muted">
@@ -233,7 +233,7 @@ export function RawMaterialPage() {
                     type="time"
                     value={sharedStart}
                     onChange={(e) => setSharedStart(e.target.value)}
-                    className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-sm text-ink"
+                    className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-center text-sm text-ink"
                   />
                 </label>
                 <label className="text-xs font-medium text-muted">
@@ -242,7 +242,7 @@ export function RawMaterialPage() {
                     type="time"
                     value={sharedEnd}
                     onChange={(e) => setSharedEnd(e.target.value)}
-                    className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-sm text-ink"
+                    className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-center text-sm text-ink"
                   />
                 </label>
                 <button
@@ -268,42 +268,42 @@ export function RawMaterialPage() {
               <thead className="bg-brand-50 text-xs uppercase text-muted">
                 <tr>
                   <th className="px-3 py-2">Process</th>
-                  <th className="px-3 py-2">Date</th>
-                  <th className="px-3 py-2">Start</th>
-                  <th className="px-3 py-2">End</th>
+                  <th className="px-3 py-2 text-center">Date</th>
+                  <th className="px-3 py-2 text-center">Start</th>
+                  <th className="px-3 py-2 text-center">End</th>
                   <th className="px-3 py-2">Observation</th>
-                  <th className="px-3 py-2">Result</th>
+                  <th className="px-3 py-2 text-center">Result</th>
                 </tr>
               </thead>
               <tbody>
                 {checks.map((row, index) => (
                   <tr key={row.process} className="border-t border-line/70">
                     <td className="px-3 py-2 font-medium">{row.process}</td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 text-center">
                       <input
                         type="date"
                         disabled={qcLocked || !hasPermission('rm_qc:edit')}
                         value={row.processDate ?? ''}
                         onChange={(e) => updateCheck(index, { processDate: e.target.value })}
-                        className="rounded border border-line px-2 py-1"
+                        className="rounded border border-line px-2 py-1 text-center"
                       />
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 text-center">
                       <input
                         type="time"
                         disabled={qcLocked || !hasPermission('rm_qc:edit')}
                         value={row.startTime ?? ''}
                         onChange={(e) => updateCheck(index, { startTime: e.target.value })}
-                        className="rounded border border-line px-2 py-1"
+                        className="rounded border border-line px-2 py-1 text-center"
                       />
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 text-center">
                       <input
                         type="time"
                         disabled={qcLocked || !hasPermission('rm_qc:edit')}
                         value={row.endTime ?? ''}
                         onChange={(e) => updateCheck(index, { endTime: e.target.value })}
-                        className="rounded border border-line px-2 py-1"
+                        className="rounded border border-line px-2 py-1 text-center"
                       />
                     </td>
                     <td className="px-3 py-2 align-top">
@@ -350,7 +350,7 @@ export function RawMaterialPage() {
                         );
                       })()}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 text-center">
                       <select
                         disabled={qcLocked || !hasPermission('rm_qc:edit')}
                         value={row.result ?? ''}
