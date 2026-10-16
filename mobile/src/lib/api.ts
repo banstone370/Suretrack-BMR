@@ -7,7 +7,7 @@ const REFRESH_KEY = 'suretech_r…oken';
 const ORIGIN_STORAGE_KEY = 'suretech_api_origin';
 
 export const DEFAULT_API_ORIGIN =
-  process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:5000';
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://suretrack-bmr-production.up.railway.app';
 
 let cachedOrigin: string | null = null;
 
