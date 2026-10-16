@@ -25,19 +25,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   const loadMe = useCallback(async () => {
-    const token = await tokenStore.getAccess();
-    if (!token) {
-      setUser(null);
-      setReady(true);
-      return;
-    }
     try {
-      const res = await api.get<ApiResponse<User>>('/auth/me');
-      setUser(unwrap(res));
+      const token = await tokenStore.getAccess();
+      if (token) {
+        const res = await api.get<ApiResponse<User>>('/auth/me');
+        setUser(unwrap(res));
+      } else {
+        setUser(null);
+      }
     } catch {
-      await tokenStore.clear();
+      await tokenStore.clear().catch(() => {});
       setUser(null);
     } finally {
+      // Must run even if SecureStore itself throws, or the app sticks on the
+      // loading gate in (app)/_layout forever.
       setReady(true);
     }
   }, []);

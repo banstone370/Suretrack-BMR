@@ -28,22 +28,46 @@ export const apiBase = () => `${cachedOrigin ?? DEFAULT_API_ORIGIN}/api/v1`;
 
 export const tokenStore = {
   async getAccess() {
-    return SecureStore.getItemAsync(ACCESS_KEY);
+    try {
+      return await SecureStore.getItemAsync(ACCESS_KEY);
+    } catch {
+      return AsyncStorage.getItem(ACCESS_KEY); // SecureStore unavailable on this device
+    }
   },
   async getRefresh() {
-    return SecureStore.getItemAsync(REFRESH_KEY);
+    try {
+      return await SecureStore.getItemAsync(REFRESH_KEY);
+    } catch {
+      return AsyncStorage.getItem(REFRESH_KEY);
+    }
   },
   async set(access: string, refresh: string) {
-    await SecureStore.setItemAsync(ACCESS_KEY, access);
-    await SecureStore.setItemAsync(REFRESH_KEY, refresh);
+    try {
+      await SecureStore.setItemAsync(ACCESS_KEY, access);
+      await SecureStore.setItemAsync(REFRESH_KEY, refresh);
+      await AsyncStorage.multiRemove([ACCESS_KEY, REFRESH_KEY]);
+    } catch {
+      await AsyncStorage.multiSet([
+        [ACCESS_KEY, access],
+        [REFRESH_KEY, refresh],
+      ]);
+    }
   },
   async clear() {
-    await SecureStore.deleteItemAsync(ACCESS_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_KEY);
+    try {
+      await SecureStore.deleteItemAsync(ACCESS_KEY);
+      await SecureStore.deleteItemAsync(REFRESH_KEY);
+    } catch {
+      // keystore unavailable; nothing further to purge there
+    }
+    await AsyncStorage.multiRemove([ACCESS_KEY, REFRESH_KEY]);
   },
 };
 
-export const api = axios.create({ headers: { 'Content-Type': 'application/json' } });
+export const api = axios.create({
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 15_000, // fail fast instead of hanging when the server is unreachable
+});
 
 api.interceptors.request.use(async (config) => {
   config.baseURL = `${await getApiOrigin()}/api/v1`;
@@ -59,9 +83,11 @@ async function doRefresh(): Promise<string | null> {
   if (!refresh) return null;
   try {
     const origin = await getApiOrigin();
-    const { data } = await axios.post(`${origin}/api/v1/auth/refresh`, {
-      refreshToken: refresh,
-    });
+    const { data } = await axios.post(
+      `${origin}/api/v1/auth/refresh`,
+      { refreshToken: refresh },
+      { timeout: 15_000 },
+    );
     await tokenStore.set(data.data.accessToken, data.data.refreshToken);
     return data.data.accessToken as string;
   } catch {
