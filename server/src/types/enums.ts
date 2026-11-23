@@ -56,6 +56,7 @@ export enum RecordLockState {
   SUBMITTED = 'SUBMITTED',
   APPROVED = 'APPROVED',
   LOCKED = 'LOCKED',
+  SKIPPED = 'SKIPPED',
 }
 
 export type Permission =

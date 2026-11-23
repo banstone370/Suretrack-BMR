@@ -63,6 +63,23 @@ export interface Product {
         sterilitySop?: string;
         betSop?: string;
         storageCondition?: string;
+        rmQcChecks?: string[];
+        ipqcChecks?: string[];
+        /** Product-centric (v2) BMR template fields */
+        docId?: string;
+        bmrIssueNo?: string;
+        bmrEffectiveDate?: string;
+        manufacturingInstruction?: string;
+        rawMaterials?: Array<{ name: string }>;
+        manufacturingSteps?: Array<{ step: string }>;
+        sealingModes?: Array<{
+          mode: 'paper' | 'tyvek' | 'blister';
+          temperatureC: number;
+          sopRef: string;
+        }>;
+        packingType?: 'pouch' | 'blisterTray';
+        extraSections?: string[];
+        optionalStages?: string[];
       };
 }
 

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../../lib/api';
 import type { ApiResponse, Product } from '../../types';
+import { ProductTemplateEditor } from './ProductTemplateEditor';
 
 const EMPTY_FORM = {
   name: '',
@@ -39,6 +40,7 @@ export function ProductsPage() {
   const { hasPermission } = useAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState('');
 
@@ -348,17 +350,59 @@ export function ProductsPage() {
                 <p className="mt-3 text-sm text-muted">{product.description}</p>
               )}
               {template && (
-                <div className="mt-4 rounded-lg bg-brand-50/70 p-3 text-xs text-muted sm:text-sm">
-                  <p className="font-medium text-ink">{template.name}</p>
-                  <p className="mt-1">
-                    Seal {template.sealingParams?.temperatureC ?? '—'}°C · ETO{' '}
-                    {template.sterilizationParams?.temperatureC ?? '—'}°C /{' '}
-                    {template.sterilizationParams?.durationHours ?? '—'}h /{' '}
-                    {template.sterilizationParams?.etoCartridgeGrams ?? '—'}g
-                  </p>
-                  <p className="mt-1">
-                    {template.storageCondition ?? 'Store at Room Temperature'}
-                  </p>
+                <>
+                  <div className="mt-4 rounded-lg bg-brand-50/70 p-3 text-xs text-muted sm:text-sm">
+                    <p className="font-medium text-ink">{template.name}</p>
+                    <p className="mt-1">
+                      Seal {template.sealingParams?.temperatureC ?? '—'}°C · ETO{' '}
+                      {template.sterilizationParams?.temperatureC ?? '—'}°C /{' '}
+                      {template.sterilizationParams?.durationHours ?? '—'}h /{' '}
+                      {template.sterilizationParams?.etoCartridgeGrams ?? '—'}g
+                    </p>
+                    <p className="mt-1">
+                      {template.storageCondition ?? 'Store at Room Temperature'}
+                    </p>
+                    {template.docId && (
+                      <>
+                        <p className="mt-1">
+                          BMR {template.docId}
+                          {template.bmrIssueNo ? ` · Issue ${template.bmrIssueNo}` : ''}
+                          {template.bmrEffectiveDate
+                            ? ` · Effective ${template.bmrEffectiveDate}`
+                            : ''}
+                        </p>
+                        <p className="mt-1">
+                          {template.rawMaterials?.length ?? 0} raw materials ·{' '}
+                          {template.manufacturingSteps?.length ?? 0} manufacturing steps ·{' '}
+                          {template.sealingModes?.length ?? 0} sealing modes
+                        </p>
+                      </>
+                    )}
+                    {(template.optionalStages?.length ?? 0) > 0 && (
+                      <p className="mt-1 font-medium text-warn">
+                        Skipped stages: {template.optionalStages!.join(', ')}
+                      </p>
+                    )}
+                  </div>
+
+                  {canManage && editingId !== product._id && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(product._id)}
+                      className="mt-3 rounded-md border border-line bg-white px-3 py-1.5 text-sm font-medium text-brand-900 hover:bg-brand-50"
+                    >
+                      Edit BMR template
+                    </button>
+                  )}
+                </>
+              )}
+              {canManage && template && editingId === product._id && (
+                <div className="mt-4">
+                  <ProductTemplateEditor
+                    product={product}
+                    template={template}
+                    onClose={() => setEditingId(null)}
+                  />
                 </div>
               )}
             </article>

@@ -1,5 +1,19 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
+export interface ISealingMode {
+  mode: 'paper' | 'tyvek' | 'blister';
+  temperatureC: number;
+  sopRef: string;
+}
+
+export interface IRawMaterial {
+  name: string;
+}
+
+export interface IManufacturingStep {
+  step: string;
+}
+
 export interface IProcessTemplate extends Document {
   productId?: Types.ObjectId;
   name: string;
@@ -24,6 +38,17 @@ export interface IProcessTemplate extends Document {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  /** v2 product-centric fields (all optional; batches seeded with docId use them) */
+  docId?: string;
+  bmrIssueNo?: string;
+  bmrEffectiveDate?: string;
+  manufacturingInstruction?: string;
+  rawMaterials?: IRawMaterial[];
+  manufacturingSteps?: IManufacturingStep[];
+  sealingModes?: ISealingMode[];
+  packingType?: 'pouch' | 'blisterTray';
+  extraSections?: string[];
+  optionalStages?: string[];
 }
 
 const processTemplateSchema = new Schema<IProcessTemplate>(
@@ -51,6 +76,37 @@ const processTemplateSchema = new Schema<IProcessTemplate>(
     storageCondition: { type: String, required: true },
     rmQcChecks: [{ type: String }],
     ipqcChecks: [{ type: String }],
+    docId: { type: String },
+    bmrIssueNo: { type: String },
+    bmrEffectiveDate: { type: String },
+    manufacturingInstruction: { type: String },
+    rawMaterials: [
+      {
+        name: { type: String, required: true },
+      },
+    ],
+    manufacturingSteps: [
+      {
+        step: { type: String, required: true },
+      },
+    ],
+    sealingModes: [
+      {
+        mode: {
+          type: String,
+          enum: ['paper', 'tyvek', 'blister'],
+          required: true,
+        },
+        temperatureC: { type: Number, required: true },
+        sopRef: { type: String, required: true },
+      },
+    ],
+    packingType: {
+      type: String,
+      enum: ['pouch', 'blisterTray'],
+    },
+    extraSections: [{ type: String }],
+    optionalStages: [{ type: String }],
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },

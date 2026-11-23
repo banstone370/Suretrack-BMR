@@ -8,6 +8,7 @@ import { BatchStatus } from '../types/enums.js';
 import { AppError, ok } from '../utils/errors.js';
 import { addMonths, buildBatchNoPrefix, formatBatchNo } from '../utils/batchNo.js';
 import { streamBmrPdf } from '../pdf/bmrGenerator.js';
+import { streamTemplateBmrPdf } from '../pdf/bmrTemplateGenerator.js';
 import {
   batchProgressPercent,
   buildTimeline,
@@ -139,6 +140,11 @@ export async function createBatch(req: Request, res: Response, next: NextFunctio
       throw new AppError(409, 'CONFLICT', 'Batch number already exists');
     }
 
+    const isV2 = Boolean(template.docId);
+    const optionalStages = template.optionalStages ?? [];
+    const skipPacking = optionalStages.includes('PACKING');
+    const skipSealing = optionalStages.includes('SEALING');
+
     const batch = await Batch.create({
       batchNo: resolvedBatchNo,
       productId: product.id,
@@ -165,6 +171,20 @@ export async function createBatch(req: Request, res: Response, next: NextFunctio
         storageCondition: template.storageCondition,
         rmQcChecks: template.rmQcChecks,
         ipqcChecks: template.ipqcChecks,
+        ...(isV2
+          ? {
+              docId: template.docId,
+              bmrIssueNo: template.bmrIssueNo,
+              bmrEffectiveDate: template.bmrEffectiveDate,
+              manufacturingInstruction: template.manufacturingInstruction,
+              rawMaterials: (template.rawMaterials ?? []).map((r) => r.name),
+              manufacturingSteps: (template.manufacturingSteps ?? []).map((s) => s.step),
+              sealingModes: template.sealingModes ?? [],
+              packingType: template.packingType,
+              extraSections: template.extraSections ?? [],
+              optionalStages,
+            }
+          : {}),
       },
       stages: {
         rawMaterialQc: {
@@ -174,20 +194,61 @@ export async function createBatch(req: Request, res: Response, next: NextFunctio
             result: null,
           })),
         },
-        rawMaterialConsumption: { lockState: 'OPEN', lines: [] },
-        manufacturing: {
+        rawMaterialConsumption: {
           lockState: 'OPEN',
-          process: 'The needles are made Ready for Sterilization.',
-          status: 'NOT_STARTED',
+          lines: isV2
+            ? (template.rawMaterials ?? []).map((r) => ({
+                rawMaterialName: r.name,
+                supplierBatchNo: null,
+                quantityWithdrawn: null,
+              }))
+            : [],
         },
-        inProcessQc: { lockState: 'OPEN' },
+        manufacturing: isV2
+          ? {
+              lockState: 'OPEN',
+              steps: (template.manufacturingSteps ?? []).map((s) => ({
+                step: s.step,
+              })),
+              status: 'NOT_STARTED',
+            }
+          : {
+              lockState: 'OPEN',
+              process: 'The needles are made Ready for Sterilization.',
+              status: 'NOT_STARTED',
+            },
+        inProcessQc: isV2
+          ? {
+              lockState: 'OPEN',
+              checks: (template.ipqcChecks ?? []).map((check) => ({
+                check,
+                result: null,
+              })),
+            }
+          : { lockState: 'OPEN' },
         visualInspection: { lockState: 'OPEN' },
-        packing: { lockState: 'OPEN' },
-        sealing: {
-          lockState: 'OPEN',
-          configuredTemperatureC: template.sealingParams.temperatureC,
-          sopRef: template.sealingParams.sopRef,
-        },
+        packing: skipPacking
+          ? { lockState: 'SKIPPED', skipReason: 'Not applicable for this product' }
+          : { lockState: 'OPEN' },
+        sealing: skipSealing
+          ? {
+              lockState: 'SKIPPED',
+              skipReason: 'Not applicable for this product',
+            }
+          : {
+              lockState: 'OPEN',
+              configuredTemperatureC: template.sealingParams.temperatureC,
+              sopRef: template.sealingParams.sopRef,
+              ...(isV2 && (template.sealingModes ?? []).length > 0
+                ? {
+                    modes: template.sealingModes!.map((m) => ({
+                      mode: m.mode,
+                      configuredTemperatureC: m.temperatureC,
+                      sopRef: m.sopRef,
+                    })),
+                  }
+                : {}),
+            },
         sterilization: {
           lockState: 'OPEN',
           configuredTemperatureC: template.sterilizationParams.temperatureC,
@@ -351,7 +412,12 @@ export async function getBatchPdf(req: Request, res: Response, next: NextFunctio
       req,
     });
 
-    await streamBmrPdf(batch, res);
+    const snap = (batch.processParamsSnapshot ?? {}) as Record<string, unknown>;
+    if (snap.docId) {
+      await streamTemplateBmrPdf(batch, res);
+    } else {
+      await streamBmrPdf(batch, res);
+    }
   } catch (err) {
     next(err);
   }

@@ -3,7 +3,7 @@ import * as productController from '../controllers/productController.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/rbac.js';
 import { validateBody } from '../middleware/validate.js';
-import { createProductSchema } from '../validators/index.js';
+import { createProductSchema, updateProductTemplateSchema } from '../validators/index.js';
 
 const router = Router();
 
@@ -12,6 +12,12 @@ router.use(requireAuth);
 router.get('/', productController.listProducts);
 router.get('/:id', productController.getProduct);
 router.get('/:id/template', productController.getProductTemplate);
+router.put(
+  '/:id/template',
+  requirePermission('products:manage'),
+  validateBody(updateProductTemplateSchema),
+  productController.updateProductTemplate,
+);
 router.post(
   '/',
   requirePermission('products:manage'),

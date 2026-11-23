@@ -93,9 +93,16 @@ function transition(
   );
 }
 
-function validateRmQcPayload(payload: Record<string, unknown>) {
+function isTemplateV2(batch: IBatch): boolean {
+  return Boolean((batch.processParamsSnapshot as Record<string, unknown> | undefined)?.docId);
+}
+
+function validateRmQcPayload(payload: Record<string, unknown>, isV2: boolean) {
   const checks = payload.checks;
-  if (!Array.isArray(checks) || checks.length === 0) {
+  if (!Array.isArray(checks)) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'QC check rows are required');
+  }
+  if (!isV2 && checks.length === 0) {
     throw new AppError(400, 'VALIDATION_ERROR', 'At least one QC check row is required');
   }
   for (const row of checks) {
@@ -107,9 +114,12 @@ function validateRmQcPayload(payload: Record<string, unknown>) {
   }
 }
 
-function validateConsumptionPayload(payload: Record<string, unknown>) {
+function validateConsumptionPayload(payload: Record<string, unknown>, isV2: boolean) {
   const lines = payload.lines;
-  if (!Array.isArray(lines) || lines.length === 0) {
+  if (!Array.isArray(lines)) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Consumption lines are required');
+  }
+  if (!isV2 && lines.length === 0) {
     throw new AppError(400, 'VALIDATION_ERROR', 'At least one consumption line is required');
   }
   for (const line of lines) {
@@ -127,23 +137,53 @@ function validateConsumptionPayload(payload: Record<string, unknown>) {
   }
 }
 
-function validateManufacturingPayload(payload: Record<string, unknown>, forSubmit: boolean) {
-  if (!forSubmit) return;
-  if (!payload.processDate) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'Process date is required');
+function validateManufacturingPayload(
+  payload: Record<string, unknown>,
+  isV2: boolean,
+  forSubmit: boolean,
+) {
+  if (!isV2) {
+    if (!forSubmit) return;
+    if (!payload.processDate) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Process date is required');
+    }
+    if (!payload.startTime || !payload.endTime) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Start and end time are required');
+    }
+    return;
   }
-  if (!payload.startTime || !payload.endTime) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'Start and end time are required');
+  const steps = payload.steps;
+  if (!Array.isArray(steps) || steps.length === 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Manufacturing steps are required');
+  }
+  if (!forSubmit) return;
+  for (const step of steps) {
+    const s = step as Record<string, unknown>;
+    if (!s.processDate) {
+      throw new AppError(
+        400,
+        'VALIDATION_ERROR',
+        `Process date is required for step: ${s.step ?? ''}`,
+      );
+    }
+    if (!s.startTime || !s.endTime) {
+      throw new AppError(
+        400,
+        'VALIDATION_ERROR',
+        `Start and end time are required for step: ${s.step ?? ''}`,
+      );
+    }
   }
 }
 
-function validateIpqcPayload(payload: Record<string, unknown>) {
-  if (
-    payload.dustFree !== true ||
-    payload.burrFree !== true ||
-    payload.foreignParticleFree !== true
-  ) {
-    // Allow fail path via result FAIL, but require explicit fields
+function validateIpqcPayload(payload: Record<string, unknown>, isV2: boolean) {
+  if (isV2 && Array.isArray(payload.checks)) {
+    for (const row of payload.checks) {
+      const r = row as Record<string, unknown>;
+      if (!r.result || !['PASS', 'FAIL', 'NA'].includes(String(r.result))) {
+        throw new AppError(400, 'VALIDATION_ERROR', `Result required for ${r.check}`);
+      }
+    }
   }
   if (!['PASS', 'FAIL', 'NA'].includes(String(payload.result ?? ''))) {
     throw new AppError(400, 'VALIDATION_ERROR', 'Overall result (PASS/FAIL/NA) is required');
@@ -217,8 +257,40 @@ function validatePackingPayload(payload: Record<string, unknown>) {
   }
 }
 
-function validateSealingPayload(payload: Record<string, unknown>, forSubmit: boolean) {
+function validateSealingPayload(
+  payload: Record<string, unknown>,
+  isV2: boolean,
+  forSubmit: boolean,
+) {
   if (!forSubmit) return;
+  if (isV2 && Array.isArray(payload.modes) && payload.modes.length > 0) {
+    for (const mode of payload.modes) {
+      const m = mode as Record<string, unknown>;
+      if (m.actualTemperatureC === undefined || m.actualTemperatureC === null) {
+        throw new AppError(
+          400,
+          'VALIDATION_ERROR',
+          `Actual sealing temperature is required for ${m.mode} mode`,
+        );
+      }
+      const devicesSealed = Number(m.devicesSealed);
+      if (!Number.isFinite(devicesSealed) || devicesSealed < 0) {
+        throw new AppError(
+          400,
+          'VALIDATION_ERROR',
+          `Devices sealed must be ≥ 0 for ${m.mode} mode`,
+        );
+      }
+      if (!m.sealingDate || !m.startTime || !m.endTime) {
+        throw new AppError(
+          400,
+          'VALIDATION_ERROR',
+          `Sealing date, start and end time are required for ${m.mode} mode`,
+        );
+      }
+    }
+    return;
+  }
   if (payload.actualTemperatureC === undefined || payload.actualTemperatureC === null) {
     throw new AppError(400, 'VALIDATION_ERROR', 'Actual sealing temperature is required');
   }
@@ -317,19 +389,24 @@ function computeExpectedEnd(startDate: string, startTime: string, durationHours:
   return new Date(start.getTime() + durationHours * 60 * 60 * 1000);
 }
 
-function validateStagePayload(slug: StageSlug, payload: Record<string, unknown>, forSubmit: boolean) {
+function validateStagePayload(
+  slug: StageSlug,
+  payload: Record<string, unknown>,
+  forSubmit: boolean,
+  isV2: boolean,
+) {
   switch (slug) {
     case 'raw-material-qc':
-      if (forSubmit) validateRmQcPayload(payload);
+      if (forSubmit) validateRmQcPayload(payload, isV2);
       break;
     case 'raw-material-consumption':
-      if (forSubmit) validateConsumptionPayload(payload);
+      if (forSubmit) validateConsumptionPayload(payload, isV2);
       break;
     case 'manufacturing':
-      validateManufacturingPayload(payload, forSubmit);
+      validateManufacturingPayload(payload, isV2, forSubmit);
       break;
     case 'in-process-qc':
-      if (forSubmit) validateIpqcPayload(payload);
+      if (forSubmit) validateIpqcPayload(payload, isV2);
       break;
     case 'visual-inspection':
       if (forSubmit) validateVisualPayload(payload);
@@ -338,7 +415,7 @@ function validateStagePayload(slug: StageSlug, payload: Record<string, unknown>,
       if (forSubmit) validatePackingPayload(payload);
       break;
     case 'sealing':
-      validateSealingPayload(payload, forSubmit);
+      validateSealingPayload(payload, isV2, forSubmit);
       break;
     case 'sterilization':
       validateSterilizationPayload(payload, forSubmit);
@@ -396,11 +473,14 @@ export async function saveStage(params: {
   }
 
   const current = getStageData(batch, def.field);
+  if (current.lockState === RecordLockState.SKIPPED) {
+    throw new AppError(400, 'INVALID_STATE', `${def.label} is not applicable for this product`);
+  }
   if (isStageLocked(String(current.lockState ?? ''))) {
     throw new AppError(400, 'LOCKED', `${def.label} is locked. Request a correction to edit.`);
   }
 
-  validateStagePayload(def.slug, params.payload, false);
+  validateStagePayload(def.slug, params.payload, false, isTemplateV2(batch));
 
   let nextData: Record<string, unknown> = {
     ...current,
@@ -483,35 +563,52 @@ export async function submitStage(params: {
     throw new AppError(400, 'LOCKED', `${def.label} is locked`);
   }
 
-  validateStagePayload(def.slug, params.payload, true);
+  const isV2 = isTemplateV2(batch);
+  const skippingStage = current.lockState === RecordLockState.SKIPPED;
+  if (!skippingStage) {
+    validateStagePayload(def.slug, params.payload, true, isV2);
+  }
   const signature = makeSignature(params.user, params.statement);
 
-  let nextData: Record<string, unknown> = {
-    ...current,
-    ...params.payload,
-  };
+  let nextData: Record<string, unknown> = skippingStage
+    ? {
+        ...current,
+        skipConfirmedBy: signature,
+        skipConfirmedAt: new Date(),
+        lockState: RecordLockState.SKIPPED,
+      }
+    : {
+        ...current,
+        ...params.payload,
+      };
 
-  if (def.slug === 'visual-inspection') {
-    nextData = normalizeVisual(nextData);
-  }
-  if (def.slug === 'packing') {
-    nextData = normalizePacking(nextData);
-  }
-  if (def.slug === 'sterilization' && nextData.startDate && nextData.startTime) {
-    const hours = Number(
-      nextData.requiredDurationHours ??
-        batch.processParamsSnapshot?.sterilizationParams?.durationHours ??
-        4,
-    );
-    nextData.expectedEndAt = computeExpectedEnd(
-      String(nextData.startDate).slice(0, 10),
-      String(nextData.startTime),
-      hours,
-    );
+  if (!skippingStage) {
+    if (def.slug === 'visual-inspection') {
+      nextData = normalizeVisual(nextData);
+    }
+    if (def.slug === 'packing') {
+      nextData = normalizePacking(nextData);
+    }
+    if (def.slug === 'sterilization' && nextData.startDate && nextData.startTime) {
+      const hours = Number(
+        nextData.requiredDurationHours ??
+          batch.processParamsSnapshot?.sterilizationParams?.durationHours ??
+          4,
+      );
+      nextData.expectedEndAt = computeExpectedEnd(
+        String(nextData.startDate).slice(0, 10),
+        String(nextData.startTime),
+        hours,
+      );
+    }
   }
 
-  if (def.slug === 'raw-material-qc') {
-    const incoming = nextData.checks as Array<Record<string, unknown>>;
+  if (skippingStage) {
+    // Skip confirmation needs no per-slug post-processing
+  } else if (def.slug === 'raw-material-qc') {
+    const incoming = (
+      Array.isArray(nextData.checks) ? nextData.checks : []
+    ) as Array<Record<string, unknown>>;
     const checks = incoming.map((c) => ({
       ...c,
       doneBy: c.doneBy ?? signature,
@@ -526,7 +623,9 @@ export async function submitStage(params: {
       lockState: RecordLockState.SUBMITTED,
     };
   } else if (def.slug === 'raw-material-consumption') {
-    const lines = (nextData.lines as Array<Record<string, unknown>>).map((l) => ({
+    const lines = (
+      (Array.isArray(nextData.lines) ? nextData.lines : []) as Array<Record<string, unknown>>
+    ).map((l) => ({
       ...l,
       doneBy: l.doneBy ?? signature,
       checkedBy: l.checkedBy ?? signature,

@@ -30,10 +30,16 @@ export interface StageCtx {
   stage: StageResponse;
   data: Record<string, unknown>;
   lockState: string;
+  /** Stage is optional for this product (template marked it not applicable). */
+  skipped: boolean;
+  /** The skip has already been signed off; batch moved past this stage. */
+  skipConfirmed: boolean;
   editable: boolean;
   canSubmit: boolean;
   canApprove: boolean;
   canReject: boolean;
+  canSkipConfirm: boolean;
+  confirmSkip: () => void;
   saved: { current: Record<string, unknown> };
   setForm: (patch: Record<string, unknown>) => void;
   replaceForm: (next: Record<string, unknown>) => void;
@@ -93,6 +99,11 @@ export default function StageFrame({ batchId, def, children }: StageFrameProps) 
   const stage = stageQuery.data;
   const lockState = String(stage?.data?.lockState ?? 'OPEN');
   const status = stage?.status ?? 'DRAFT';
+  const skipped = lockState === 'SKIPPED';
+  const skipConfirmed = Boolean(stage?.data?.skipConfirmedAt);
+  const skipConfirmedBy = stage?.data?.skipConfirmedBy as
+    | { name?: string; employeeId?: string }
+    | undefined;
 
   const editable =
     !!stage &&
@@ -103,6 +114,12 @@ export default function StageFrame({ batchId, def, children }: StageFrameProps) 
     !!stage &&
     hasPermission(def.editPermission) &&
     lockState === 'OPEN' &&
+    def.submittableWhen.includes(status);
+  const canSkipConfirm =
+    !!stage &&
+    skipped &&
+    !skipConfirmed &&
+    hasPermission(def.editPermission) &&
     def.submittableWhen.includes(status);
   const canApprove =
     !!stage &&
@@ -130,10 +147,23 @@ export default function StageFrame({ batchId, def, children }: StageFrameProps) 
     stage,
     data: form,
     lockState,
+    skipped,
+    skipConfirmed,
     editable,
     canSubmit,
     canApprove,
     canReject,
+    canSkipConfirm,
+    confirmSkip: () => {
+      setError('');
+      // A skipped stage carries no payload; the server records the signature only.
+      validateRef.current = () => null;
+      submitOptsRef.current = {
+        message: `Skip ${def.label} — not applicable`,
+        confirmLabel: 'Confirm skip & sign',
+      };
+      setSign('submit');
+    },
     saved: { current: stage.data },
     setForm: (patch) => setFormState((f) => ({ ...f, ...patch })),
     replaceForm: (next) => setFormState(next),
@@ -224,7 +254,18 @@ export default function StageFrame({ batchId, def, children }: StageFrameProps) 
           <Badge text={`Lock: ${lockState}`} tone={lockState === 'OPEN' ? 'success' : 'warning'} />
           {stage.progressPercent != null ? <Text style={styles.pct}>{stage.progressPercent}% complete</Text> : null}
         </View>
-        {lockState !== 'OPEN' ? (
+        {skipped ? (
+          <NoticeBanner
+            message={
+              skipConfirmed
+                ? `Not applicable for this product — skip signed off${
+                    skipConfirmedBy ? ` by ${skipConfirmedBy.name ?? '—'}` : ''
+                  }. No ${def.label} entries are required for this batch.`
+                : 'Not applicable for this product — this stage is marked optional in the BMR template.'
+            }
+            tone="info"
+          />
+        ) : lockState !== 'OPEN' ? (
           <NoticeBanner
             message={
               lockState === 'SUBMITTED'
@@ -250,6 +291,21 @@ export default function StageFrame({ batchId, def, children }: StageFrameProps) 
       </Card>
 
       {children(ctx)}
+
+      {canSkipConfirm ? (
+        <Card>
+          <SectionTitle>Not applicable</SectionTitle>
+          <Text style={styles.skipHint}>
+            {def.label} does not apply to this product. Confirming the skip requires your
+            electronic signature and moves the batch to the next stage.
+          </Text>
+          <Button
+            title="Confirm skip & continue"
+            onPress={ctx.confirmSkip}
+            loading={actions.submit.isPending}
+          />
+        </Card>
+      ) : null}
 
       {editable || canSubmit ? (
         <Card>
@@ -310,7 +366,11 @@ export default function StageFrame({ batchId, def, children }: StageFrameProps) 
         requireReason={sign === 'reject' || (sign === 'submit' && !!submitOptsRef.current?.requireReason)}
         reasonLabel={sign === 'submit' ? submitOptsRef.current?.reasonLabel ?? 'Reason' : 'Reason'}
         statement={
-          sign === 'approve' && def.approveStatement ? def.approveStatement : esign
+          sign === 'approve' && def.approveStatement
+            ? def.approveStatement
+            : sign === 'submit' && skipped
+              ? `I confirm that ${def.label} does not apply to this product and may be skipped for this batch.`
+              : esign
         }
         onClose={() => setSign(null)}
         onConfirm={onSignConfirm}
@@ -325,4 +385,5 @@ const styles = StyleSheet.create({
   batch: { fontWeight: '800', fontSize: 16, color: colors.text, flexShrink: 1 },
   label: { color: colors.primary, fontWeight: '700', marginTop: 2 },
   pct: { color: colors.muted, fontSize: 12 },
+  skipHint: { color: colors.muted, fontSize: 13, marginBottom: 10 },
 });

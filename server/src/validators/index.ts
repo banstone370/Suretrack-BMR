@@ -45,6 +45,12 @@ const DEFAULT_STAGES = [
   'DISPATCH',
 ];
 
+const sealingModeSchema = z.object({
+  mode: z.enum(['paper', 'tyvek', 'blister']),
+  temperatureC: z.number().positive(),
+  sopRef: z.string().trim().min(1),
+});
+
 export const createProductSchema = z.object({
   name: z.string().trim().min(1),
   catalogueNo: z.string().trim().min(1),
@@ -65,8 +71,43 @@ export const createProductSchema = z.object({
       storageCondition: z.string().trim().min(1).default('Store at Room Temperature'),
       rmQcChecks: z.array(z.string().trim().min(1)).optional(),
       ipqcChecks: z.array(z.string().trim().min(1)).optional(),
+      docId: z.string().trim().optional(),
+      bmrIssueNo: z.string().trim().optional(),
+      bmrEffectiveDate: z.string().trim().optional(),
+      manufacturingInstruction: z.string().trim().optional(),
+      rawMaterials: z.array(z.string().trim().min(1)).optional(),
+      manufacturingSteps: z.array(z.string().trim().min(1)).optional(),
+      sealingModes: z.array(sealingModeSchema).optional(),
+      packingType: z.enum(['pouch', 'blisterTray']).optional(),
+      extraSections: z.array(z.enum(['CONTROL_SAMPLE', 'LABEL_OF_PRODUCT'])).optional(),
+      optionalStages: z.array(z.enum(['PACKING', 'SEALING'])).optional(),
     })
     .optional(),
+});
+
+export const updateProductTemplateSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  sealingTemperatureC: z.number().positive().optional(),
+  sealingSopRef: z.string().trim().min(1).optional(),
+  sterilizationTemperatureC: z.number().positive().optional(),
+  sterilizationDurationHours: z.number().positive().optional(),
+  etoCartridgeGrams: z.number().positive().optional(),
+  sterilizationSopRef: z.string().trim().min(1).optional(),
+  sterilitySop: z.string().trim().min(1).optional(),
+  betSop: z.string().trim().min(1).optional(),
+  storageCondition: z.string().trim().min(1).optional(),
+  rmQcChecks: z.array(z.string().trim().min(1)).optional(),
+  ipqcChecks: z.array(z.string().trim().min(1)).optional(),
+  docId: z.string().trim().optional(),
+  bmrIssueNo: z.string().trim().optional(),
+  bmrEffectiveDate: z.string().trim().optional(),
+  manufacturingInstruction: z.string().trim().optional(),
+  rawMaterials: z.array(z.string().trim().min(1)).optional(),
+  manufacturingSteps: z.array(z.string().trim().min(1)).optional(),
+  sealingModes: z.array(sealingModeSchema).optional(),
+  packingType: z.enum(['pouch', 'blisterTray']).optional(),
+  extraSections: z.array(z.enum(['CONTROL_SAMPLE', 'LABEL_OF_PRODUCT'])).optional(),
+  optionalStages: z.array(z.enum(['PACKING', 'SEALING'])).optional(),
 });
 
 export { DEFAULT_STAGES };

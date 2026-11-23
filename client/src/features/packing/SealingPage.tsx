@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { StageShell } from '../../components/batch/StageShell';
+import { SkippedStagePanel } from '../../components/batch/SkippedStagePanel';
 import { ElectronicSignature } from '../../components/forms/ElectronicSignature';
 import { useAuth } from '../auth/AuthContext';
 import { useStage } from '../../hooks/useStage';
@@ -41,9 +42,9 @@ export function SealingPage() {
   }, [stage.query.data, configuredTemp]);
 
   const batch = stage.batchQuery.data;
-  const locked = ['SUBMITTED', 'APPROVED', 'LOCKED'].includes(
-    String(stage.query.data?.data?.lockState ?? ''),
-  );
+  const lockState = String(stage.query.data?.data?.lockState ?? 'OPEN');
+  const skipped = lockState === 'SKIPPED';
+  const locked = ['SUBMITTED', 'APPROVED', 'LOCKED', 'SKIPPED'].includes(lockState);
   const canEdit = hasPermission('sealing:edit') && !locked;
 
   return (
@@ -55,7 +56,16 @@ export function SealingPage() {
       progressPercent={batch?.progressPercent}
       title="Sealing"
     >
-      <section className="space-y-4 rounded-xl border border-line bg-white/90 p-3 shadow-sm sm:p-5">
+      {skipped ? (
+        <SkippedStagePanel
+          stage={stage}
+          label="Sealing"
+          nextLabel="Sterilization"
+          permissionOk={hasPermission('sealing:edit')}
+          statusOk={String(batch?.status ?? '') === 'SEALING'}
+        />
+      ) : (
+        <section className="space-y-4 rounded-xl border border-line bg-white/90 p-3 shadow-sm sm:p-5">
         <div className="grid gap-3 rounded-lg bg-brand-50/80 p-4 text-sm sm:grid-cols-2">
           <div>
             <p className="text-xs text-muted">Configured temperature (SOP)</p>
@@ -150,8 +160,10 @@ export function SealingPage() {
             </button>
           </div>
         )}
-      </section>
+        </section>
+      )}
 
+      {!skipped && (
       <ElectronicSignature
         open={signOpen}
         title="Complete Sealing"
@@ -165,6 +177,7 @@ export function SealingPage() {
           setMsg('Sealing complete — moved to Sterilization');
         }}
       />
+      )}
     </StageShell>
   );
 }
