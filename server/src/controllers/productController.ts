@@ -182,26 +182,27 @@ export async function updateProductTemplate(req: Request, res: Response, next: N
     const body = req.body as z.infer<typeof updateProductTemplateSchema>;
 
     if (body.name !== undefined) template.name = body.name;
-    if (body.sealingTemperatureC !== undefined || body.sealingSopRef !== undefined) {
-      template.sealingParams = {
-        ...template.sealingParams,
-        temperatureC: body.sealingTemperatureC ?? template.sealingParams.temperatureC,
-        sopRef: body.sealingSopRef ?? template.sealingParams.sopRef,
-      };
+    // Set nested paths individually: assigning a plain object to a single-nested
+    // path (e.g. template.sealingParams = {...}) makes Mongoose cast every
+    // declared subpath, and `allowedRange` currently holds `undefined`, which
+    // fails with "Cast to Object failed" on save.
+    if (body.sealingTemperatureC !== undefined) {
+      template.set('sealingParams.temperatureC', body.sealingTemperatureC);
     }
-    if (
-      body.sterilizationTemperatureC !== undefined ||
-      body.sterilizationDurationHours !== undefined ||
-      body.etoCartridgeGrams !== undefined ||
-      body.sterilizationSopRef !== undefined
-    ) {
-      template.sterilizationParams = {
-        ...template.sterilizationParams,
-        temperatureC: body.sterilizationTemperatureC ?? template.sterilizationParams.temperatureC,
-        durationHours: body.sterilizationDurationHours ?? template.sterilizationParams.durationHours,
-        etoCartridgeGrams: body.etoCartridgeGrams ?? template.sterilizationParams.etoCartridgeGrams,
-        sopRef: body.sterilizationSopRef ?? template.sterilizationParams.sopRef,
-      };
+    if (body.sealingSopRef !== undefined) {
+      template.set('sealingParams.sopRef', body.sealingSopRef);
+    }
+    if (body.sterilizationTemperatureC !== undefined) {
+      template.set('sterilizationParams.temperatureC', body.sterilizationTemperatureC);
+    }
+    if (body.sterilizationDurationHours !== undefined) {
+      template.set('sterilizationParams.durationHours', body.sterilizationDurationHours);
+    }
+    if (body.etoCartridgeGrams !== undefined) {
+      template.set('sterilizationParams.etoCartridgeGrams', body.etoCartridgeGrams);
+    }
+    if (body.sterilizationSopRef !== undefined) {
+      template.set('sterilizationParams.sopRef', body.sterilizationSopRef);
     }
     if (body.sterilitySop !== undefined) template.sterilitySop = body.sterilitySop;
     if (body.betSop !== undefined) template.betSop = body.betSop;

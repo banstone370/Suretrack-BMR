@@ -102,6 +102,8 @@ export function ProductsPage() {
   }
 
   const canManage = hasPermission('products:manage');
+  const editingProduct = (products.data ?? []).find((p) => p._id === editingId) ?? null;
+  const editingTemplate = editingProduct ? templateOf(editingProduct) : null;
 
   return (
     <div className="space-y-5">
@@ -385,7 +387,7 @@ export function ProductsPage() {
                     )}
                   </div>
 
-                  {canManage && editingId !== product._id && (
+                  {canManage && (
                     <button
                       type="button"
                       onClick={() => setEditingId(product._id)}
@@ -396,15 +398,6 @@ export function ProductsPage() {
                   )}
                 </>
               )}
-              {canManage && template && editingId === product._id && (
-                <div className="mt-4">
-                  <ProductTemplateEditor
-                    product={product}
-                    template={template}
-                    onClose={() => setEditingId(null)}
-                  />
-                </div>
-              )}
             </article>
           );
         })}
@@ -412,6 +405,14 @@ export function ProductsPage() {
           <p className="text-sm text-muted sm:col-span-2">No products yet. Add the first product.</p>
         )}
       </div>
+
+      {canManage && editingProduct && editingTemplate && (
+        <ProductTemplateEditor
+          product={editingProduct}
+          template={editingTemplate}
+          onClose={() => setEditingId(null)}
+        />
+      )}
     </div>
   );
 }
