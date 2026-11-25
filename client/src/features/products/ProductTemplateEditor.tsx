@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { ChevronDown, ChevronUp, GripVertical, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import type { ApiResponse, Product } from '../../types';
 
@@ -13,10 +13,101 @@ interface ModeRow {
   sopRef: string;
 }
 
-const EXTRA_SECTION_LABELS: Array<{ value: string; label: string }> = [
-  { value: 'CONTROL_SAMPLE', label: 'Control sample record' },
-  { value: 'LABEL_OF_PRODUCT', label: 'Label of the product' },
+interface SectionRow {
+  key: string;
+  title: string;
+  instructions: string;
+  enabled: boolean;
+}
+
+interface SectionDef {
+  key: string;
+  label: string;
+  defaultTitle: string;
+}
+
+/** Every BMR PDF section, with the heading the renderer prints by default. */
+const SECTION_DEFS: SectionDef[] = [
+  { key: 'RAW_MATERIAL_QC', label: 'Raw material QC', defaultTitle: 'QUALITY CHECKING OF RAW MATERIAL' },
+  {
+    key: 'RAW_MATERIAL_CONSUMPTION',
+    label: 'Raw material consumption',
+    defaultTitle: 'RAW MATERIAL CONSUMPTION RECORD',
+  },
+  { key: 'MANUFACTURING', label: 'Manufacturing', defaultTitle: 'MANUFACTURING PROCESS' },
+  { key: 'IN_PROCESS_QC', label: 'In-process QC', defaultTitle: 'IN-PROCESS QUALITY CHECKING' },
+  {
+    key: 'VISUAL_INSPECTION',
+    label: 'Visual inspection',
+    defaultTitle: 'VISUAL INSPECTION FOR DUST / FOREIGN PARTICLES',
+  },
+  { key: 'PACKING', label: 'Packing', defaultTitle: 'PACKING RECORD' },
+  { key: 'SEALING', label: 'Sealing', defaultTitle: 'SEALING RECORD' },
+  { key: 'STERILIZATION', label: 'Sterilization', defaultTitle: 'STERILIZATION RECORD' },
+  { key: 'LABELLING', label: 'Labelling', defaultTitle: 'BATCH LABELLING RECORD' },
+  { key: 'STERILITY_TEST', label: 'Sterility test', defaultTitle: 'STERILITY TEST RECORD' },
+  { key: 'BET_TEST', label: 'BET test', defaultTitle: 'BET TEST RECORD' },
+  { key: 'CONTROL_SAMPLE', label: 'Control sample', defaultTitle: 'CONTROL SAMPLE RECORD' },
+  { key: 'LABEL_OF_PRODUCT', label: 'Label of the product', defaultTitle: 'LABEL OF THE PRODUCT' },
+  { key: 'FINISHED_GOODS', label: 'Finished goods', defaultTitle: 'BATCH PACKING RECORD' },
+  { key: 'DISPATCH', label: 'Dispatch', defaultTitle: 'MATERIAL DISPATCH RECORD' },
 ];
+
+/** Sections that print no instruction text unless the template supplies some. */
+const NO_DEFAULT_INSTRUCTIONS = new Set([
+  'IN_PROCESS_QC',
+  'STERILITY_TEST',
+  'BET_TEST',
+  'CONTROL_SAMPLE',
+  'LABEL_OF_PRODUCT',
+  'FINISHED_GOODS',
+  'DISPATCH',
+]);
+
+function sectionDef(key: string): SectionDef | undefined {
+  return SECTION_DEFS.find((def) => def.key === key);
+}
+
+function sectionLabel(key: string): string {
+  return sectionDef(key)?.label ?? key;
+}
+
+function instructionHint(key: string): string {
+  if (key === 'SEALING') {
+    return 'Blank = sealing instructions are generated from the sealing modes above.';
+  }
+  if (NO_DEFAULT_INSTRUCTIONS.has(key)) {
+    return 'Blank = no instructions are printed for this section.';
+  }
+  return 'Blank = the standard instructions for this section are printed.';
+}
+
+/** Merge the saved section list with the full catalogue, keeping saved order. */
+function initialSections(t: Template): SectionRow[] {
+  const saved = t.sections ?? [];
+  const rows: SectionRow[] = [];
+  for (const section of saved) {
+    const key = String(section?.key ?? '');
+    if (!key || rows.some((row) => row.key === key)) continue;
+    rows.push({
+      key,
+      title: section.title ?? '',
+      instructions: (section.instructions ?? []).join('\n'),
+      enabled: section.enabled !== false,
+    });
+  }
+  for (const def of SECTION_DEFS) {
+    if (rows.some((row) => row.key === def.key)) continue;
+    // Legacy templates have no section list; control sample and product label
+    // were opt-in via extraSections, so keep that off state.
+    const legacyExtraOff =
+      saved.length === 0 &&
+      (def.key === 'CONTROL_SAMPLE' || def.key === 'LABEL_OF_PRODUCT') &&
+      !(t.extraSections ?? []).includes(def.key);
+    rows.push({ key: def.key, title: '', instructions: '', enabled: !legacyExtraOff });
+  }
+  return rows;
+}
 
 const OPTIONAL_STAGE_LABELS: Array<{ value: string; label: string }> = [
   { value: 'PACKING', label: 'Packing' },
@@ -63,6 +154,7 @@ function initialState(t: Template) {
     ipqcChecks: (t.ipqcChecks ?? []).join('\n'),
     extraSections: t.extraSections ?? [],
     optionalStages: t.optionalStages ?? [],
+    sections: initialSections(t),
   };
 }
 
@@ -80,6 +172,10 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => initialState(template));
   const [error, setError] = useState('');
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [handleArmed, setHandleArmed] = useState<number | null>(null);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -112,6 +208,12 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
         ipqcChecks: parseLines(form.ipqcChecks),
         extraSections: form.extraSections,
         optionalStages: form.optionalStages,
+        sections: form.sections.map((section) => ({
+          key: section.key,
+          title: section.title.trim() || undefined,
+          instructions: parseLines(section.instructions),
+          enabled: section.enabled,
+        })),
       };
       const { data } = await api.put<ApiResponse<unknown>>(
         `/products/${product._id}/template`,
@@ -142,6 +244,28 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
 
   function setField(key: keyof ReturnType<typeof initialState>, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function setSection(index: number, patch: Partial<SectionRow>) {
+    setForm((prev) => ({
+      ...prev,
+      sections: prev.sections.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    }));
+  }
+
+  function moveSection(from: number, to: number) {
+    setForm((prev) => {
+      if (from === to || from < 0 || to < 0) return prev;
+      if (from >= prev.sections.length || to >= prev.sections.length) return prev;
+      const sections = [...prev.sections];
+      const [moved] = sections.splice(from, 1);
+      sections.splice(to, 0, moved);
+      return { ...prev, sections };
+    });
+  }
+
+  function toggleSectionOpen(key: string) {
+    setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
   function toggleList(key: 'extraSections' | 'optionalStages', value: string) {
@@ -252,6 +376,152 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
                     className={input}
                   />
                 </label>
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  PDF sections — wording &amp; order
+                </h3>
+                <p className="text-xs text-muted">
+                  {form.sections.filter((row) => row.enabled).length} of {form.sections.length}{' '}
+                  printed · drag the handle or use the arrows
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                {form.sections.map((row, index) => {
+                  const def = sectionDef(row.key);
+                  const expanded = Boolean(openSections[row.key]);
+                  const instructionCount = parseLines(row.instructions).length;
+                  return (
+                    <div
+                      key={row.key}
+                      draggable={handleArmed === index}
+                      onDragStart={(e) => {
+                        setDragIndex(index);
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', row.key);
+                      }}
+                      onDragEnd={() => {
+                        setDragIndex(null);
+                        setDragOverIndex(null);
+                        setHandleArmed(null);
+                      }}
+                      onDragOver={(e) => {
+                        if (dragIndex === null) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (dragOverIndex !== index) setDragOverIndex(index);
+                      }}
+                      onDrop={(e) => {
+                        if (dragIndex === null) return;
+                        e.preventDefault();
+                        moveSection(dragIndex, index);
+                        setDragIndex(null);
+                        setDragOverIndex(null);
+                        setHandleArmed(null);
+                      }}
+                      className={`rounded-lg border bg-white p-2.5 transition ${
+                        dragOverIndex === index && dragIndex !== null && dragIndex !== index
+                          ? 'border-brand-800 ring-2 ring-brand-800/20'
+                          : 'border-line'
+                      } ${dragIndex === index ? 'opacity-60' : ''} ${
+                        row.enabled ? '' : 'bg-brand-50/60'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start gap-2 sm:flex-nowrap">
+                        <button
+                          type="button"
+                          onMouseDown={() => setHandleArmed(index)}
+                          onMouseUp={() => setHandleArmed(null)}
+                          onMouseLeave={() => setHandleArmed(null)}
+                          className="mt-1 cursor-grab rounded p-1 text-muted hover:bg-brand-50 hover:text-ink active:cursor-grabbing"
+                          aria-label={`Drag ${sectionLabel(row.key)} to reorder`}
+                          title="Drag to reorder"
+                        >
+                          <GripVertical size={16} />
+                        </button>
+
+                        <input
+                          type="checkbox"
+                          checked={row.enabled}
+                          onChange={(e) => setSection(index, { enabled: e.target.checked })}
+                          className="mt-2.5"
+                          aria-label={`Print ${sectionLabel(row.key)}`}
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold text-muted">{index + 1}.</span>
+                            <span
+                              className={`truncate text-sm font-medium ${
+                                row.enabled ? '' : 'text-muted line-through'
+                              }`}
+                            >
+                              {sectionLabel(row.key)}
+                            </span>
+                          </div>
+                          <input
+                            value={row.title}
+                            onChange={(e) => setSection(index, { title: e.target.value })}
+                            placeholder={def?.defaultTitle ?? 'Section heading'}
+                            className="mt-1 w-full rounded-md border border-line px-2.5 py-1.5 text-xs outline-none ring-brand-800 focus:ring-2"
+                            aria-label={`Heading for ${sectionLabel(row.key)}`}
+                          />
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => moveSection(index, index - 1)}
+                            disabled={index === 0}
+                            className="rounded p-1.5 text-muted hover:bg-brand-50 hover:text-ink disabled:opacity-30"
+                            aria-label={`Move ${sectionLabel(row.key)} up`}
+                          >
+                            <ChevronUp size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveSection(index, index + 1)}
+                            disabled={index === form.sections.length - 1}
+                            className="rounded p-1.5 text-muted hover:bg-brand-50 hover:text-ink disabled:opacity-30"
+                            aria-label={`Move ${sectionLabel(row.key)} down`}
+                          >
+                            <ChevronDown size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleSectionOpen(row.key)}
+                            className={`rounded-md border px-2 py-1 text-xs ${
+                              instructionCount
+                                ? 'border-brand-800/30 bg-brand-50 text-brand-900'
+                                : 'border-line text-muted hover:bg-brand-50'
+                            }`}
+                            aria-expanded={expanded}
+                          >
+                            {instructionCount ? `Instructions (${instructionCount})` : 'Instructions'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {expanded && (
+                        <div className="mt-2 sm:pl-7">
+                          <textarea
+                            value={row.instructions}
+                            onChange={(e) => setSection(index, { instructions: e.target.value })}
+                            rows={4}
+                            placeholder="One instruction per line…"
+                            className="w-full rounded-md border border-line px-2.5 py-1.5 font-mono text-xs outline-none ring-brand-800 focus:ring-2"
+                            aria-label={`Instructions for ${sectionLabel(row.key)}`}
+                          />
+                          <p className="mt-1 text-[11px] text-muted">{instructionHint(row.key)}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </section>
 
@@ -487,19 +757,12 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
               </h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <p className="text-xs font-semibold text-muted">Extra sections in the PDF</p>
-                  <div className="mt-2 space-y-1.5">
-                    {EXTRA_SECTION_LABELS.map((opt) => (
-                      <label key={opt.value} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={form.extraSections.includes(opt.value)}
-                          onChange={() => toggleList('extraSections', opt.value)}
-                        />
-                        {opt.label}
-                      </label>
-                    ))}
-                  </div>
+                  <p className="text-xs font-semibold text-muted">Optional record sections</p>
+                  <p className="mt-2 text-sm text-muted">
+                    <strong className="font-medium text-ink">Control sample</strong> and{' '}
+                    <strong className="font-medium text-ink">Label of the product</strong> are
+                    toggled in the “PDF sections” list above, where they can also be reordered.
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-muted">

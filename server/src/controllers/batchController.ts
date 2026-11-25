@@ -183,6 +183,17 @@ export async function createBatch(req: Request, res: Response, next: NextFunctio
               packingType: template.packingType,
               extraSections: template.extraSections ?? [],
               optionalStages,
+              // Mongoose defaults `sections` to [], so only snapshot a real list.
+              ...(Array.isArray(template.sections) && template.sections.length > 0
+                ? {
+                    sections: template.sections.map((section) => ({
+                      key: section.key,
+                      title: section.title,
+                      instructions: section.instructions ?? [],
+                      enabled: section.enabled !== false,
+                    })),
+                  }
+                : {}),
             }
           : {}),
       },

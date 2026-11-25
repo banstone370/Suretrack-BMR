@@ -59,6 +59,25 @@ export enum RecordLockState {
   SKIPPED = 'SKIPPED',
 }
 
+/** Sections of the product-centric BMR (v2) that can be re-ordered in a template. */
+export enum BmrSectionKey {
+  RAW_MATERIAL_QC = 'RAW_MATERIAL_QC',
+  RAW_MATERIAL_CONSUMPTION = 'RAW_MATERIAL_CONSUMPTION',
+  MANUFACTURING = 'MANUFACTURING',
+  IN_PROCESS_QC = 'IN_PROCESS_QC',
+  VISUAL_INSPECTION = 'VISUAL_INSPECTION',
+  PACKING = 'PACKING',
+  SEALING = 'SEALING',
+  STERILIZATION = 'STERILIZATION',
+  LABELLING = 'LABELLING',
+  STERILITY_TEST = 'STERILITY_TEST',
+  BET_TEST = 'BET_TEST',
+  CONTROL_SAMPLE = 'CONTROL_SAMPLE',
+  LABEL_OF_PRODUCT = 'LABEL_OF_PRODUCT',
+  FINISHED_GOODS = 'FINISHED_GOODS',
+  DISPATCH = 'DISPATCH',
+}
+
 export type Permission =
   | 'users:manage'
   | 'products:manage'

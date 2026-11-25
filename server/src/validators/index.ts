@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Role } from '../types/enums.js';
+import { BmrSectionKey, Role } from '../types/enums.js';
 
 export const loginSchema = z.object({
   email: z.string().email(),
@@ -85,6 +85,13 @@ export const createProductSchema = z.object({
     .optional(),
 });
 
+export const bmrSectionSchema = z.object({
+  key: z.nativeEnum(BmrSectionKey),
+  title: z.string().trim().max(160).optional(),
+  instructions: z.array(z.string().trim().min(1)).max(60).optional(),
+  enabled: z.boolean().optional(),
+});
+
 export const updateProductTemplateSchema = z.object({
   name: z.string().trim().min(1).optional(),
   sealingTemperatureC: z.number().positive().optional(),
@@ -108,6 +115,7 @@ export const updateProductTemplateSchema = z.object({
   packingType: z.enum(['pouch', 'blisterTray']).optional(),
   extraSections: z.array(z.enum(['CONTROL_SAMPLE', 'LABEL_OF_PRODUCT'])).optional(),
   optionalStages: z.array(z.enum(['PACKING', 'SEALING'])).optional(),
+  sections: z.array(bmrSectionSchema).max(30).optional(),
 });
 
 export { DEFAULT_STAGES };

@@ -22,6 +22,83 @@ const BLACK = '#000000';
 type Snap = Record<string, any>;
 type Stage = Record<string, any>;
 
+interface SectionCfg {
+  title?: string;
+  instructions?: string[];
+}
+
+/**
+ * Resolve a section's per-template overrides. Returns null when the section is
+ * disabled, `{}` when the template has no section config (defaults apply).
+ */
+function sectionConfig(snap: Snap, key: string): SectionCfg | null {
+  const list =
+    Array.isArray(snap.sections) && snap.sections.length > 0
+      ? (snap.sections as Array<Record<string, unknown>>)
+      : null;
+  if (!list) return {};
+  const found = list.find((item) => String(item?.key ?? '') === key);
+  if (!found || found.enabled === false) return null;
+  const title = found.title == null ? '' : String(found.title).trim();
+  const instr = Array.isArray(found.instructions)
+    ? (found.instructions as unknown[])
+        .map((l) => String(l ?? '').trim())
+        .filter(Boolean)
+    : [];
+  return {
+    title: title || undefined,
+    instructions: instr.length ? instr : undefined,
+  };
+}
+
+/** Print order used when a template has no explicit section configuration. */
+const DEFAULT_SECTION_ORDER = [
+  'RAW_MATERIAL_QC',
+  'RAW_MATERIAL_CONSUMPTION',
+  'MANUFACTURING',
+  'IN_PROCESS_QC',
+  'VISUAL_INSPECTION',
+  'PACKING',
+  'SEALING',
+  'STERILIZATION',
+  'LABELLING',
+  'STERILITY_TEST',
+  'BET_TEST',
+  'CONTROL_SAMPLE',
+  'LABEL_OF_PRODUCT',
+  'FINISHED_GOODS',
+  'DISPATCH',
+];
+
+/** True when the section should be printed for this snapshot. */
+function sectionEnabled(snap: Snap, key: string): boolean {
+  if (Array.isArray(snap.sections) && snap.sections.length > 0) {
+    return sectionConfig(snap, key) !== null;
+  }
+  // Legacy snapshots had no section list; only the optional extras were togglable.
+  if (key === 'CONTROL_SAMPLE' || key === 'LABEL_OF_PRODUCT') {
+    const extras: string[] = Array.isArray(snap.extraSections) ? snap.extraSections : [];
+    return extras.includes(key);
+  }
+  return true;
+}
+
+/** Print order for this snapshot: saved order first, then any missing defaults. */
+function sectionOrder(snap: Snap): string[] {
+  const configured =
+    Array.isArray(snap.sections) && snap.sections.length > 0
+      ? (snap.sections as Array<Record<string, unknown>>).map((item) => String(item?.key ?? ''))
+      : [];
+  const ordered: string[] = [];
+  for (const key of configured) {
+    if (key && !ordered.includes(key)) ordered.push(key);
+  }
+  for (const key of DEFAULT_SECTION_ORDER) {
+    if (!ordered.includes(key)) ordered.push(key);
+  }
+  return ordered;
+}
+
 function s(v: unknown, fallback = ''): string {
   if (v === undefined || v === null || v === '') return fallback;
   return String(v);
@@ -360,13 +437,17 @@ const LABELLING_INSTRUCTIONS = [
   '3. Verify the correct labels and its required quantity is received.',
 ];
 
-function rmQcSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>) {
+function rmQcSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, cfg: SectionCfg = {}) {
   const qc = stages.rawMaterialQc ?? {};
   const checks = Array.isArray(qc.checks) ? qc.checks : [];
   if (checks.length === 0) return;
 
-  sectionTitle(doc, 'QUALITY CHECKING OF RAW MATERIAL');
-  instructions(doc, 'GENERAL INSTRUCTION FOR QUALITY CHECKING', RM_QC_INSTRUCTIONS);
+  sectionTitle(doc, cfg.title || 'QUALITY CHECKING OF RAW MATERIAL');
+  instructions(
+    doc,
+    'GENERAL INSTRUCTION FOR QUALITY CHECKING',
+    cfg.instructions ?? RM_QC_INSTRUCTIONS,
+  );
   table(
     doc,
     [
@@ -398,12 +479,20 @@ function rmQcSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>) {
   ]);
 }
 
-function consumptionSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>) {
+function consumptionSection(
+  doc: PDFKit.PDFDocument,
+  stages: Record<string, Stage>,
+  cfg: SectionCfg = {},
+) {
   const cons = stages.rawMaterialConsumption ?? {};
   const lines = Array.isArray(cons.lines) ? cons.lines : [];
 
-  sectionTitle(doc, 'RAW MATERIAL CONSUMPTION RECORD');
-  instructions(doc, 'GENERAL INSTRUCTION FOR ISSUE OF RAW MATERIAL', FIFO_INSTRUCTIONS);
+  sectionTitle(doc, cfg.title || 'RAW MATERIAL CONSUMPTION RECORD');
+  instructions(
+    doc,
+    'GENERAL INSTRUCTION FOR ISSUE OF RAW MATERIAL',
+    cfg.instructions ?? FIFO_INSTRUCTIONS,
+  );
 
   const rows: string[][] = lines.map((l: Stage, i: number) => [
     `${String(i + 1).padStart(2, '0')}.`,
@@ -435,17 +524,19 @@ function consumptionSection(doc: PDFKit.PDFDocument, stages: Record<string, Stag
   );
 }
 
-function manufacturingSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, snap: Snap) {
+function manufacturingSection(
+  doc: PDFKit.PDFDocument,
+  stages: Record<string, Stage>,
+  snap: Snap,
+  cfg: SectionCfg = {},
+) {
   const mfg = stages.manufacturing ?? {};
 
-  sectionTitle(doc, 'MANUFACTURING PROCESS');
-  if (s(snap.manufacturingInstruction)) {
-    instructions(doc, 'GENERAL INSTRUCTION FOR MANUFACTURING PROCESS', [
-      s(snap.manufacturingInstruction),
-    ]);
-  } else {
-    instructions(doc, 'GENERAL INSTRUCTION FOR MANUFACTURING PROCESS', MFG_INSTRUCTIONS);
-  }
+  sectionTitle(doc, cfg.title || 'MANUFACTURING PROCESS');
+  const mfgInstructions =
+    cfg.instructions ??
+    (s(snap.manufacturingInstruction) ? [s(snap.manufacturingInstruction)] : MFG_INSTRUCTIONS);
+  instructions(doc, 'GENERAL INSTRUCTION FOR MANUFACTURING PROCESS', mfgInstructions);
   clearanceLine(doc, 'Checked by', (mfg as Stage).verifiedBy);
 
   const steps = Array.isArray((mfg as Stage).steps)
@@ -496,12 +587,15 @@ function manufacturingSection(doc: PDFKit.PDFDocument, stages: Record<string, St
   totalsLine(doc, 'Verified by:', sig((mfg as Stage).verifiedBy) || '________');
 }
 
-function ipqcSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>) {
+function ipqcSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, cfg: SectionCfg = {}) {
   const ip = stages.inProcessQc ?? {};
   const checks = Array.isArray((ip as Stage).checks) ? ((ip as Stage).checks as Stage[]) : [];
   if (checks.length === 0) return;
 
-  sectionTitle(doc, 'IN-PROCESS QUALITY CHECKING');
+  sectionTitle(doc, cfg.title || 'IN-PROCESS QUALITY CHECKING');
+  if (cfg.instructions?.length) {
+    instructions(doc, 'GENERAL INSTRUCTIONS FOR IN-PROCESS QUALITY CHECKING', cfg.instructions);
+  }
   table(
     doc,
     [
@@ -527,13 +621,17 @@ function ipqcSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>) {
   ]);
 }
 
-function visualSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>) {
+function visualSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, cfg: SectionCfg = {}) {
   const vis = stages.visualInspection ?? {};
-  sectionTitle(doc, 'VISUAL INSPECTION FOR DUST / FOREIGN PARTICLES');
-  instructions(doc, 'GENERAL INSTRUCTIONS FOR VISUAL INSPECTION', [
-    '1. Carry out visual inspection process as specified in the SOP.',
-    '2. Ensure removal of previous lot material before start of visual inspection process for the next lot.',
-  ]);
+  sectionTitle(doc, cfg.title || 'VISUAL INSPECTION FOR DUST / FOREIGN PARTICLES');
+  instructions(
+    doc,
+    'GENERAL INSTRUCTIONS FOR VISUAL INSPECTION',
+    cfg.instructions ?? [
+      '1. Carry out visual inspection process as specified in the SOP.',
+      '2. Ensure removal of previous lot material before start of visual inspection process for the next lot.',
+    ],
+  );
   clearanceLine(doc, 'Checked by', (vis as Stage).verifiedBy);
   table(
     doc,
@@ -560,12 +658,21 @@ function visualSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>) {
   );
 }
 
-function packingSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, snap: Snap) {
+function packingSection(
+  doc: PDFKit.PDFDocument,
+  stages: Record<string, Stage>,
+  snap: Snap,
+  cfg: SectionCfg = {},
+) {
   const pack = stages.packing ?? {};
   if ((pack as Stage).lockState === 'SKIPPED') return;
 
-  sectionTitle(doc, 'PACKING RECORD');
-  instructions(doc, 'GENERAL INSTRUCTIONS FOR PACKING PROCESS', PACKING_INSTRUCTIONS);
+  sectionTitle(doc, cfg.title || 'PACKING RECORD');
+  instructions(
+    doc,
+    'GENERAL INSTRUCTIONS FOR PACKING PROCESS',
+    cfg.instructions ?? PACKING_INSTRUCTIONS,
+  );
   clearanceLine(doc, 'Checked by', (pack as Stage).verifiedBy);
 
   const pouchLabel =
@@ -595,11 +702,16 @@ function packingSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, 
   );
 }
 
-function sealingSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, snap: Snap) {
+function sealingSection(
+  doc: PDFKit.PDFDocument,
+  stages: Record<string, Stage>,
+  snap: Snap,
+  cfg: SectionCfg = {},
+) {
   const seal = stages.sealing ?? {};
   if ((seal as Stage).lockState === 'SKIPPED') return;
 
-  sectionTitle(doc, 'SEALING RECORD');
+  sectionTitle(doc, cfg.title || 'SEALING RECORD');
 
   const modes = Array.isArray((seal as Stage).modes) ? ((seal as Stage).modes as Stage[]) : [];
   const lines: string[] = modes.map(
@@ -609,7 +721,11 @@ function sealingSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, 
       }, Operation done As Per ${s(m.sopRef)}`,
   );
   lines.push(`${lines.length + 1}. Ensure removal of previous lot material before start of sealing process for the next lot.`);
-  instructions(doc, 'GENERAL INSTRUCTIONS FOR SEALING PROCESS', lines);
+  instructions(
+    doc,
+    'GENERAL INSTRUCTIONS FOR SEALING PROCESS',
+    cfg.instructions ?? lines,
+  );
 
   clearanceLine(doc, 'Checked by', (seal as Stage).verifiedBy);
 
@@ -657,12 +773,21 @@ function sealingSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, 
   );
 }
 
-function sterilizationSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, snap: Snap) {
+function sterilizationSection(
+  doc: PDFKit.PDFDocument,
+  stages: Record<string, Stage>,
+  snap: Snap,
+  cfg: SectionCfg = {},
+) {
   const ster = stages.sterilization ?? {};
   const sp = snap.sterilizationParams ?? {};
 
-  sectionTitle(doc, 'STERILIZATION RECORD');
-  instructions(doc, 'GENERAL INSTRUCTIONS FOR STERILIZATION PROCESS', STERILE_INSTRUCTIONS);
+  sectionTitle(doc, cfg.title || 'STERILIZATION RECORD');
+  instructions(
+    doc,
+    'GENERAL INSTRUCTIONS FOR STERILIZATION PROCESS',
+    cfg.instructions ?? STERILE_INSTRUCTIONS,
+  );
   clearanceLine(doc, 'Checked by', (ster as Stage).verifiedBy);
 
   times(doc, 8);
@@ -734,11 +859,19 @@ function sterilizationSection(doc: PDFKit.PDFDocument, stages: Record<string, St
   );
 }
 
-function labellingSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>) {
+function labellingSection(
+  doc: PDFKit.PDFDocument,
+  stages: Record<string, Stage>,
+  cfg: SectionCfg = {},
+) {
   const lab = stages.labelling ?? {};
 
-  sectionTitle(doc, 'BATCH LABELLING RECORD');
-  instructions(doc, 'GENERAL INSTRUCTIONS FOR LABELLING PROCESS', LABELLING_INSTRUCTIONS);
+  sectionTitle(doc, cfg.title || 'BATCH LABELLING RECORD');
+  instructions(
+    doc,
+    'GENERAL INSTRUCTIONS FOR LABELLING PROCESS',
+    cfg.instructions ?? LABELLING_INSTRUCTIONS,
+  );
   clearanceLine(doc, 'Checked by', (lab as Stage).verifiedBy);
 
   sectionTitle(doc, 'RECORD OF LABELLING ACTIVITY', 8.8);
@@ -761,8 +894,12 @@ function labTestSection(
   title: string,
   stage: Stage,
   fallbackSop: string,
+  cfg: SectionCfg = {},
 ) {
-  sectionTitle(doc, title);
+  sectionTitle(doc, cfg.title || title);
+  if (cfg.instructions?.length) {
+    instructions(doc, 'GENERAL INSTRUCTIONS', cfg.instructions);
+  }
   fieldRow(doc, [
     { label: 'As per SOP No.', value: s(stage.sopRef, fallbackSop) },
     { label: 'Sample quantity', value: s(stage.sampleQuantity) },
@@ -781,40 +918,53 @@ function labTestSection(
   ]);
 }
 
-function extraSections(doc: PDFKit.PDFDocument, stages: Record<string, Stage>, snap: Snap) {
-  const extras: string[] = Array.isArray(snap.extraSections) ? snap.extraSections : [];
-
-  if (extras.includes('CONTROL_SAMPLE')) {
-    const cs = stages.controlSample ?? {};
-    sectionTitle(doc, 'CONTROL SAMPLE RECORD');
-    fieldRow(doc, [
-      { label: 'Sample retained', value: s((cs as Stage).sampleRetained, 'YES') },
-      { label: 'Done by', value: sig((cs as Stage).doneBy) },
-    ]);
-    fieldRow(doc, [
-      { label: 'Sample quantity', value: s((cs as Stage).sampleQuantity) },
-      { label: 'Checked by', value: sig((cs as Stage).checkedBy) },
-    ]);
+function controlSampleSection(
+  doc: PDFKit.PDFDocument,
+  stages: Record<string, Stage>,
+  cfg: SectionCfg = {},
+) {
+  const cs = stages.controlSample ?? {};
+  sectionTitle(doc, cfg.title || 'CONTROL SAMPLE RECORD');
+  if (cfg.instructions?.length) {
+    instructions(doc, 'GENERAL INSTRUCTIONS', cfg.instructions);
   }
-
-  if (extras.includes('LABEL_OF_PRODUCT')) {
-    sectionTitle(doc, 'LABEL OF THE PRODUCT');
-    ensureSpace(doc, 120);
-    const y = doc.y;
-    rect(doc, M.left + 20, y, CONTENT_W - 40, 100, 0.6);
-    times(doc, 8);
-    doc.text('(Affix product label here)', M.left, y + 42, {
-      width: CONTENT_W,
-      align: 'center',
-    });
-    doc.x = M.left;
-    doc.y = y + 100;
-  }
+  fieldRow(doc, [
+    { label: 'Sample retained', value: s((cs as Stage).sampleRetained, 'YES') },
+    { label: 'Done by', value: sig((cs as Stage).doneBy) },
+  ]);
+  fieldRow(doc, [
+    { label: 'Sample quantity', value: s((cs as Stage).sampleQuantity) },
+    { label: 'Checked by', value: sig((cs as Stage).checkedBy) },
+  ]);
 }
 
-function finishedGoodsSection(doc: PDFKit.PDFDocument, stages: Record<string, Stage>) {
+function labelOfProductSection(doc: PDFKit.PDFDocument, cfg: SectionCfg = {}) {
+  sectionTitle(doc, cfg.title || 'LABEL OF THE PRODUCT');
+  if (cfg.instructions?.length) {
+    instructions(doc, 'GENERAL INSTRUCTIONS', cfg.instructions);
+  }
+  ensureSpace(doc, 120);
+  const y = doc.y;
+  rect(doc, M.left + 20, y, CONTENT_W - 40, 100, 0.6);
+  times(doc, 8);
+  doc.text('(Affix product label here)', M.left, y + 42, {
+    width: CONTENT_W,
+    align: 'center',
+  });
+  doc.x = M.left;
+  doc.y = y + 100;
+}
+
+function finishedGoodsSection(
+  doc: PDFKit.PDFDocument,
+  stages: Record<string, Stage>,
+  cfg: SectionCfg = {},
+) {
   const fg = stages.finishedGoods ?? {};
-  sectionTitle(doc, 'BATCH PACKING RECORD');
+  sectionTitle(doc, cfg.title || 'BATCH PACKING RECORD');
+  if (cfg.instructions?.length) {
+    instructions(doc, 'GENERAL INSTRUCTIONS', cfg.instructions);
+  }
   timesBold(doc, 8);
   doc.text('AFTER COMPLIANCE MATERIAL SHIFTED TO FINISHED GOODS', M.left, doc.y, {
     width: CONTENT_W,
@@ -832,7 +982,11 @@ function finishedGoodsSection(doc: PDFKit.PDFDocument, stages: Record<string, St
   ]);
 }
 
-function dispatchSection(doc: PDFKit.PDFDocument, dispatchRows: Array<Record<string, unknown>>) {
+function dispatchSection(
+  doc: PDFKit.PDFDocument,
+  dispatchRows: Array<Record<string, unknown>>,
+  cfg: SectionCfg = {},
+) {
   const rows = dispatchRows.map((r) => [
     s(r.customerName),
     s(r.billNo),
@@ -847,7 +1001,10 @@ function dispatchSection(doc: PDFKit.PDFDocument, dispatchRows: Array<Record<str
   // leaves a lone header row stranded at the bottom of a page.
   ensureSpace(doc, 60 + 26 + rows.length * 24 + 50);
 
-  sectionTitle(doc, 'MATERIAL DISPATCH RECORD');
+  sectionTitle(doc, cfg.title || 'MATERIAL DISPATCH RECORD');
+  if (cfg.instructions?.length) {
+    instructions(doc, 'GENERAL INSTRUCTIONS', cfg.instructions);
+  }
   table(
     doc,
     [
@@ -893,20 +1050,72 @@ async function renderPass(
   if (chrome) drawChrome(doc, batch, snap, 1, totalPages);
 
   productBlock(doc, batch);
-  rmQcSection(doc, stages);
-  consumptionSection(doc, stages);
-  manufacturingSection(doc, stages, snap);
-  ipqcSection(doc, stages);
-  visualSection(doc, stages);
-  packingSection(doc, stages, snap);
-  sealingSection(doc, stages, snap);
-  sterilizationSection(doc, stages, snap);
-  labellingSection(doc, stages);
-  labTestSection(doc, 'STERILITY TEST RECORD', stages.sterilityTest ?? {}, s(snap.sterilitySop, 'SOP/QC/018'));
-  labTestSection(doc, 'BET TEST RECORD', stages.betTest ?? {}, s(snap.betSop, 'SOP/QC/026'));
-  extraSections(doc, stages, snap);
-  finishedGoodsSection(doc, stages);
-  dispatchSection(doc, dispatchRows);
+
+  for (const key of sectionOrder(snap)) {
+    if (!sectionEnabled(snap, key)) continue;
+    const cfg = sectionConfig(snap, key) ?? {};
+    switch (key) {
+      case 'RAW_MATERIAL_QC':
+        rmQcSection(doc, stages, cfg);
+        break;
+      case 'RAW_MATERIAL_CONSUMPTION':
+        consumptionSection(doc, stages, cfg);
+        break;
+      case 'MANUFACTURING':
+        manufacturingSection(doc, stages, snap, cfg);
+        break;
+      case 'IN_PROCESS_QC':
+        ipqcSection(doc, stages, cfg);
+        break;
+      case 'VISUAL_INSPECTION':
+        visualSection(doc, stages, cfg);
+        break;
+      case 'PACKING':
+        packingSection(doc, stages, snap, cfg);
+        break;
+      case 'SEALING':
+        sealingSection(doc, stages, snap, cfg);
+        break;
+      case 'STERILIZATION':
+        sterilizationSection(doc, stages, snap, cfg);
+        break;
+      case 'LABELLING':
+        labellingSection(doc, stages, cfg);
+        break;
+      case 'STERILITY_TEST':
+        labTestSection(
+          doc,
+          'STERILITY TEST RECORD',
+          stages.sterilityTest ?? {},
+          s(snap.sterilitySop, 'SOP/QC/018'),
+          cfg,
+        );
+        break;
+      case 'BET_TEST':
+        labTestSection(
+          doc,
+          'BET TEST RECORD',
+          stages.betTest ?? {},
+          s(snap.betSop, 'SOP/QC/026'),
+          cfg,
+        );
+        break;
+      case 'CONTROL_SAMPLE':
+        controlSampleSection(doc, stages, cfg);
+        break;
+      case 'LABEL_OF_PRODUCT':
+        labelOfProductSection(doc, cfg);
+        break;
+      case 'FINISHED_GOODS':
+        finishedGoodsSection(doc, stages, cfg);
+        break;
+      case 'DISPATCH':
+        dispatchSection(doc, dispatchRows, cfg);
+        break;
+      default:
+        break;
+    }
+  }
 
   doc.end();
   const count = ctx.pageNo;

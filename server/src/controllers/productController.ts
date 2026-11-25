@@ -225,6 +225,23 @@ export async function updateProductTemplate(req: Request, res: Response, next: N
     if (body.packingType !== undefined) template.packingType = body.packingType;
     if (body.extraSections !== undefined) template.extraSections = body.extraSections;
     if (body.optionalStages !== undefined) template.optionalStages = body.optionalStages;
+    if (body.sections !== undefined) {
+      template.sections = body.sections.map((section) => ({
+        key: section.key,
+        title: section.title?.trim() || undefined,
+        instructions: (section.instructions ?? []).map((line) => line.trim()).filter(Boolean),
+        enabled: section.enabled !== false,
+      }));
+      // Keep the legacy extraSections flag in sync with the ordered section list
+      // so older readers (and the batch snapshot) stay accurate.
+      template.extraSections = template.sections
+        .filter(
+          (section) =>
+            section.enabled !== false &&
+            (section.key === 'CONTROL_SAMPLE' || section.key === 'LABEL_OF_PRODUCT'),
+        )
+        .map((section) => section.key);
+    }
 
     await template.save();
 

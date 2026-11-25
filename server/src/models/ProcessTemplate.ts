@@ -14,6 +14,14 @@ export interface IManufacturingStep {
   step: string;
 }
 
+/** A configurable section of the BMR: heading, free-text instructions and print order. */
+export interface IProcessSection {
+  key: string;
+  title?: string;
+  instructions?: string[];
+  enabled?: boolean;
+}
+
 export interface IProcessTemplate extends Document {
   productId?: Types.ObjectId;
   name: string;
@@ -49,6 +57,8 @@ export interface IProcessTemplate extends Document {
   packingType?: 'pouch' | 'blisterTray';
   extraSections?: string[];
   optionalStages?: string[];
+  /** Ordered print sections with custom headings/instructions (v2 templates). */
+  sections?: IProcessSection[];
 }
 
 const processTemplateSchema = new Schema<IProcessTemplate>(
@@ -107,6 +117,14 @@ const processTemplateSchema = new Schema<IProcessTemplate>(
     },
     extraSections: [{ type: String }],
     optionalStages: [{ type: String }],
+    sections: [
+      {
+        key: { type: String, required: true },
+        title: { type: String },
+        instructions: [{ type: String }],
+        enabled: { type: Boolean, default: true },
+      },
+    ],
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },

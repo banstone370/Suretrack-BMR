@@ -80,6 +80,12 @@ export interface Product {
         packingType?: 'pouch' | 'blisterTray';
         extraSections?: string[];
         optionalStages?: string[];
+        sections?: Array<{
+          key: string;
+          title?: string;
+          instructions?: string[];
+          enabled?: boolean;
+        }>;
       };
 }
 
