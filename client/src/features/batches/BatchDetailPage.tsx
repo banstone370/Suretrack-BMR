@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { BatchProgress } from '../../components/batch/BatchProgress';
 import { BatchStatusBadge } from '../../components/batch/BatchStatusBadge';
 import { ProcessTimeline } from '../../components/batch/ProcessTimeline';
+import { CustomSectionsPanel } from '../../components/batch/CustomSectionsPanel';
 import { downloadBatchPdf } from '../audit/AuditLogsPage';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../../lib/api';
@@ -11,20 +12,20 @@ import { formatDate } from '../../lib/utils';
 import type { ApiResponse, BatchDetail } from '../../types';
 
 const STAGE_LINKS = [
-  { path: 'raw-material', label: 'Raw Material', ready: true },
-  { path: 'manufacturing', label: 'Manufacturing', ready: true },
-  { path: 'qc', label: 'In-Process QC', ready: true },
-  { path: 'inspection', label: 'Inspection', ready: true },
-  { path: 'packing', label: 'Packing', ready: true },
-  { path: 'sealing', label: 'Sealing', ready: true },
-  { path: 'sterilization', label: 'Sterilization', ready: true },
-  { path: 'labelling', label: 'Labelling', ready: true },
-  { path: 'sterility', label: 'Sterility', ready: true },
-  { path: 'bet', label: 'BET', ready: true },
-  { path: 'qa', label: 'QA', ready: true },
-  { path: 'finished-goods', label: 'Finished Goods', ready: true },
-  { path: 'dispatch', label: 'Dispatch', ready: true },
-  { path: 'audit', label: 'Audit', ready: true },
+  { path: 'raw-material', label: 'Raw Material', timeline: 'RAW_MATERIAL_QC' },
+  { path: 'manufacturing', label: 'Manufacturing', timeline: 'MANUFACTURING' },
+  { path: 'qc', label: 'In-Process QC', timeline: 'IN_PROCESS_QC' },
+  { path: 'inspection', label: 'Inspection', timeline: 'VISUAL_INSPECTION' },
+  { path: 'packing', label: 'Packing', timeline: 'PACKING' },
+  { path: 'sealing', label: 'Sealing', timeline: 'SEALING' },
+  { path: 'sterilization', label: 'Sterilization', timeline: 'STERILIZATION' },
+  { path: 'labelling', label: 'Labelling', timeline: 'LABELLING' },
+  { path: 'sterility', label: 'Sterility', timeline: 'STERILITY_TEST' },
+  { path: 'bet', label: 'BET', timeline: 'BET_TEST' },
+  { path: 'qa', label: 'QA', timeline: 'QA_REVIEW' },
+  { path: 'finished-goods', label: 'Finished Goods', timeline: 'FINISHED_GOODS' },
+  { path: 'dispatch', label: 'Dispatch', timeline: 'DISPATCHED' },
+  { path: 'audit', label: 'Audit', timeline: '' },
 ];
 
 const CORRECTION_STAGES = [
@@ -168,7 +169,7 @@ export function BatchDetailPage() {
 
   const b = batch.data;
   const snapshot = b.processParamsSnapshot as {
-    sealingParams?: { temperatureC: number; sopRef: string };
+    sealingParams?: { temperatureC: number; sopRef: string; dwellSeconds?: number };
     sterilizationParams?: {
       temperatureC: number;
       durationHours: number;
@@ -180,6 +181,21 @@ export function BatchDetailPage() {
 
   const canResolve =
     hasPermission('qa:release') || user?.role === 'ADMIN';
+
+  const timelineState = (key: string) =>
+    b.timeline.find((item) => item.key === key)?.state;
+  const stageLinkClass = (state?: 'complete' | 'current' | 'upcoming') => {
+    if (state === 'complete') {
+      return 'border-accent-600/40 bg-accent-600 text-white hover:bg-accent-500';
+    }
+    if (state === 'current') {
+      return 'border-brand-800 bg-brand-900 text-white hover:bg-brand-800 ring-2 ring-brand-800/20';
+    }
+    if (state === 'upcoming') {
+      return 'border-line bg-brand-50/60 text-muted hover:bg-brand-50';
+    }
+    return 'border-brand-800/20 bg-brand-50 text-brand-900 hover:bg-brand-100';
+  };
 
   return (
     <div className="space-y-6">
@@ -289,7 +305,11 @@ export function BatchDetailPage() {
             <Link
               key={link.path}
               to={`/batches/${batchId}/${link.path}`}
-              className="shrink-0 rounded-md border border-brand-800/20 bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-900 hover:bg-brand-100"
+              className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium ${stageLinkClass(
+                link.timeline
+                  ? timelineState(link.timeline)
+                  : undefined,
+              )}`}
             >
               {link.label}
             </Link>
@@ -312,8 +332,12 @@ export function BatchDetailPage() {
               <dd className="mt-1 font-medium">{b.batchSize.toLocaleString()}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted">Mfg Date</dt>
+              <dt className="text-xs text-muted">Sterility Date</dt>
               <dd className="mt-1 font-medium">{formatDate(b.manufacturingDate)}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted">Size / spec</dt>
+              <dd className="mt-1 font-medium">{b.size || '—'}</dd>
             </div>
             <div>
               <dt className="text-xs text-muted">Expiry</dt>
@@ -336,6 +360,7 @@ export function BatchDetailPage() {
               <p className="text-xs text-muted">Sealing (configured)</p>
               <p className="mt-1 font-medium">
                 {snapshot.sealingParams?.temperatureC ?? 200}°C ·{' '}
+                {snapshot.sealingParams?.dwellSeconds ?? 3} sec ·{' '}
                 {snapshot.sealingParams?.sopRef ?? 'SOP/MF/011'}
               </p>
             </div>
@@ -358,6 +383,13 @@ export function BatchDetailPage() {
           <ProcessTimeline items={b.timeline} />
         </section>
       </div>
+
+      <CustomSectionsPanel
+        batchId={batchId!}
+        processParamsSnapshot={b.processParamsSnapshot}
+        stages={b.stages}
+        canEdit={hasPermission('batches:edit_production')}
+      />
 
       <section className="space-y-4 rounded-xl border border-line bg-white/90 p-4 shadow-sm sm:p-5">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">

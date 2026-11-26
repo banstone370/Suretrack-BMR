@@ -3,6 +3,7 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 export interface IProduct extends Document {
   name: string;
   catalogueNo: string;
+  size?: string;
   description?: string;
   defaultBatchSize?: number;
   shelfLifeMonths: number;
@@ -16,6 +17,7 @@ const productSchema = new Schema<IProduct>(
   {
     name: { type: String, required: true, trim: true },
     catalogueNo: { type: String, required: true, unique: true, trim: true },
+    size: { type: String, trim: true },
     description: { type: String },
     defaultBatchSize: { type: Number },
     shelfLifeMonths: { type: Number, required: true, default: 60 },

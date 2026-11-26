@@ -5,6 +5,7 @@ import { AttachmentPanel } from '../../components/common/AttachmentPanel';
 import { ElectronicSignature } from '../../components/forms/ElectronicSignature';
 import { useAuth } from '../auth/AuthContext';
 import { useStage } from '../../hooks/useStage';
+import { processDateError, timeOrderError } from '../../lib/utils';
 
 type LabResult = '' | 'PASS' | 'FAIL' | 'PENDING';
 
@@ -37,6 +38,7 @@ function LabTestPage({
   const stage = useStage(batchId, stageSlug);
   const [signOpen, setSignOpen] = useState(false);
   const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
   const [form, setForm] = useState<LabForm>({
     testDate: '',
     reportNo: '',
@@ -72,6 +74,21 @@ function LabTestPage({
   );
   const canEdit = hasPermission(permission) && !locked;
 
+  function validateLocal(): boolean {
+    const dateErr = processDateError(form.testDate, 'Test date');
+    if (dateErr) {
+      setError(dateErr);
+      return false;
+    }
+    const timeErr = timeOrderError(form.startTime, form.endTime);
+    if (timeErr) {
+      setError(timeErr);
+      return false;
+    }
+    setError('');
+    return true;
+  }
+
   return (
     <StageShell
       batchId={batchId!}
@@ -91,6 +108,7 @@ function LabTestPage({
           Lock: {String(stage.query.data?.data?.lockState ?? 'OPEN')}
         </p>
         {msg && <p className="text-sm text-accent-600">{msg}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium">
@@ -172,6 +190,7 @@ function LabTestPage({
               type="button"
               className="rounded-md border border-line px-4 py-2 text-sm hover:bg-brand-50"
               onClick={async () => {
+                if (!validateLocal()) return;
                 await stage.save.mutateAsync({ ...form, sopRef });
                 setMsg('Draft saved');
               }}
@@ -181,7 +200,10 @@ function LabTestPage({
             <button
               type="button"
               className="rounded-md bg-brand-900 px-4 py-2 text-sm font-medium text-white"
-              onClick={() => setSignOpen(true)}
+              onClick={() => {
+                if (!validateLocal()) return;
+                setSignOpen(true);
+              }}
             >
               Submit Result
             </button>

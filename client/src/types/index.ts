@@ -44,6 +44,7 @@ export interface Product {
   _id: string;
   name: string;
   catalogueNo: string;
+  size?: string;
   description?: string;
   defaultBatchSize?: number;
   shelfLifeMonths: number;
@@ -53,7 +54,7 @@ export interface Product {
     | {
         _id: string;
         name: string;
-        sealingParams?: { temperatureC: number; sopRef: string };
+        sealingParams?: { temperatureC: number; sopRef: string; dwellSeconds?: number };
         sterilizationParams?: {
           temperatureC: number;
           durationHours: number;
@@ -83,7 +84,18 @@ export interface Product {
         sections?: Array<{
           key: string;
           title?: string;
+          instructionHeading?: string;
           instructions?: string[];
+          tableHeading?: string;
+          columns?: string[];
+          fields?: Array<{
+            key: string;
+            label: string;
+            type: 'text' | 'textarea' | 'number' | 'date' | 'time' | 'select' | 'radio' | 'checkbox';
+            options?: string[];
+            required?: boolean;
+          }>;
+          labels?: Record<string, string>;
           enabled?: boolean;
         }>;
       };
@@ -100,6 +112,7 @@ export interface BatchListItem {
   batchNo: string;
   productName: string;
   catalogueNo: string;
+  size?: string;
   batchSize: number;
   manufacturingDate: string;
   expiryDate: string;

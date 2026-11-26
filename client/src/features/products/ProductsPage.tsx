@@ -8,11 +8,13 @@ import { ProductTemplateEditor } from './ProductTemplateEditor';
 const EMPTY_FORM = {
   name: '',
   catalogueNo: '',
+  size: '',
   description: '',
   defaultBatchSize: '10000',
-  shelfLifeMonths: '60',
+  expiryYears: '5',
   sealingTemperatureC: '200',
   sealingSopRef: 'SOP/MF/011',
+  sealingDurationSeconds: '3',
   sterilizationTemperatureC: '55',
   sterilizationDurationHours: '4',
   etoCartridgeGrams: '40',
@@ -57,12 +59,14 @@ export function ProductsPage() {
       const payload = {
         name: form.name.trim(),
         catalogueNo: form.catalogueNo.trim(),
+        size: form.size.trim() || undefined,
         description: form.description.trim() || undefined,
         defaultBatchSize: Number(form.defaultBatchSize),
-        shelfLifeMonths: Number(form.shelfLifeMonths),
+        shelfLifeMonths: Math.round(Number(form.expiryYears) * 12),
         processTemplate: {
           sealingTemperatureC: Number(form.sealingTemperatureC),
           sealingSopRef: form.sealingSopRef.trim(),
+          sealingDurationSeconds: Number(form.sealingDurationSeconds),
           sterilizationTemperatureC: Number(form.sterilizationTemperatureC),
           sterilizationDurationHours: Number(form.sterilizationDurationHours),
           etoCartridgeGrams: Number(form.etoCartridgeGrams),
@@ -158,6 +162,15 @@ export function ProductsPage() {
                   className="mt-1 w-full rounded-md border border-line px-3 py-2 outline-none ring-brand-800 focus:ring-2"
                 />
               </label>
+              <label className="text-sm font-medium">
+                Size / spec
+                <input
+                  value={form.size}
+                  onChange={(e) => setField('size', e.target.value)}
+                  placeholder="e.g. 20X32 (gauge x length)"
+                  className="mt-1 w-full rounded-md border border-line px-3 py-2 outline-none ring-brand-800 focus:ring-2"
+                />
+              </label>
               <label className="text-sm font-medium sm:col-span-2">
                 Description
                 <textarea
@@ -179,13 +192,13 @@ export function ProductsPage() {
                 />
               </label>
               <label className="text-sm font-medium">
-                Shelf life (months)
+                Expiry duration (years)
                 <input
                   required
                   type="number"
                   min={1}
-                  value={form.shelfLifeMonths}
-                  onChange={(e) => setField('shelfLifeMonths', e.target.value)}
+                  value={form.expiryYears}
+                  onChange={(e) => setField('expiryYears', e.target.value)}
                   className="mt-1 w-full rounded-md border border-line px-3 py-2 outline-none ring-brand-800 focus:ring-2"
                 />
               </label>
@@ -217,6 +230,17 @@ export function ProductsPage() {
                   required
                   value={form.sealingSopRef}
                   onChange={(e) => setField('sealingSopRef', e.target.value)}
+                  className="mt-1 w-full rounded-md border border-line px-3 py-2 outline-none ring-brand-800 focus:ring-2"
+                />
+              </label>
+              <label className="text-sm font-medium">
+                Sealing time (seconds)
+                <input
+                  required
+                  type="number"
+                  min={1}
+                  value={form.sealingDurationSeconds}
+                  onChange={(e) => setField('sealingDurationSeconds', e.target.value)}
                   className="mt-1 w-full rounded-md border border-line px-3 py-2 outline-none ring-brand-800 focus:ring-2"
                 />
               </label>
@@ -345,7 +369,12 @@ export function ProductsPage() {
                 </div>
                 <div>
                   <dt className="text-xs text-muted">Shelf life</dt>
-                  <dd className="font-medium">{product.shelfLifeMonths} months</dd>
+                  <dd className="font-medium">
+                    {(product.shelfLifeMonths / 12).toFixed(
+                      product.shelfLifeMonths % 12 === 0 ? 0 : 1,
+                    )}{' '}
+                    years
+                  </dd>
                 </div>
               </dl>
               {product.description && (

@@ -6,6 +6,7 @@ import { ElectronicSignature } from '../../components/forms/ElectronicSignature'
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../../lib/api';
 import { formatDate } from '../../lib/utils';
+import { processDateError } from '../../lib/utils';
 import { useStage } from '../../hooks/useStage';
 import type { ApiResponse } from '../../types';
 
@@ -24,14 +25,17 @@ export function SterilizationPage() {
   const stage = useStage(batchId, 'sterilization');
   const [signOpen, setSignOpen] = useState(false);
   const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
   const [form, setForm] = useState({
     quantity: 0,
     startDate: '',
     startTime: '',
     endDate: '',
     endTime: '',
-    machineId: '',
     etoCartridgeId: '',
+    cartridgeBatchNo: '',
+    cartridgeReceivedOn: '',
+    cartridgeExpiryDate: '',
     remarks: '',
   });
 
@@ -69,8 +73,14 @@ export function SterilizationPage() {
       startTime: String(data.startTime ?? ''),
       endDate: data.endDate ? String(data.endDate).slice(0, 10) : '',
       endTime: String(data.endTime ?? ''),
-      machineId: String(data.machineId ?? ''),
       etoCartridgeId: String(data.etoCartridgeId ?? ''),
+      cartridgeBatchNo: String(data.cartridgeBatchNo ?? ''),
+      cartridgeReceivedOn: data.cartridgeReceivedOn
+        ? String(data.cartridgeReceivedOn).slice(0, 10)
+        : '',
+      cartridgeExpiryDate: data.cartridgeExpiryDate
+        ? String(data.cartridgeExpiryDate).slice(0, 10)
+        : '',
       remarks: String(data.remarks ?? ''),
     });
   }, [stage.query.data]);
@@ -88,6 +98,29 @@ export function SterilizationPage() {
     String(stage.query.data?.data?.lockState ?? ''),
   );
   const canEdit = hasPermission('sterilization:edit') && !locked;
+
+  function validateLocal(): boolean {
+    const startErr = processDateError(form.startDate, 'Start date');
+    if (startErr) {
+      setError(startErr);
+      return false;
+    }
+    const endErr = processDateError(form.endDate, 'End date');
+    if (endErr) {
+      setError(endErr);
+      return false;
+    }
+    if (form.startDate && form.startTime && form.endDate && form.endTime) {
+      const start = new Date(`${form.startDate}T${form.startTime}`);
+      const end = new Date(`${form.endDate}T${form.endTime}`);
+      if (end < start) {
+        setError('End date/time cannot be before the start date/time.');
+        return false;
+      }
+    }
+    setError('');
+    return true;
+  }
 
   return (
     <StageShell
@@ -115,6 +148,7 @@ export function SterilizationPage() {
         </div>
 
         {msg && <p className="text-sm text-accent-600">{msg}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium">
@@ -125,15 +159,6 @@ export function SterilizationPage() {
               disabled={!canEdit}
               value={form.quantity}
               onChange={(e) => setForm((f) => ({ ...f, quantity: Number(e.target.value) }))}
-              className="mt-1.5 w-full rounded-md border border-line px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm font-medium">
-            Machine ID
-            <input
-              disabled={!canEdit}
-              value={form.machineId}
-              onChange={(e) => setForm((f) => ({ ...f, machineId: e.target.value }))}
               className="mt-1.5 w-full rounded-md border border-line px-3 py-2"
             />
           </label>
@@ -186,23 +211,81 @@ export function SterilizationPage() {
           </div>
         )}
 
-        <label className="block text-sm font-medium">
-          ETO cartridge
-          <select
-            disabled={!canEdit}
-            value={form.etoCartridgeId}
-            onChange={(e) => setForm((f) => ({ ...f, etoCartridgeId: e.target.value }))}
-            className="mt-1.5 w-full rounded-md border border-line px-3 py-2"
-          >
-            <option value="">Select cartridge</option>
-            {(cartridges.data ?? []).map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.cartridgeBatchNo} · {c.quantityRemainingGrams}g rem · exp{' '}
-                {formatDate(c.expiryDate)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="space-y-3 rounded-lg border border-line px-4 py-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">
+            ETO Cartridge Details
+          </h3>
+          <label className="block text-sm font-medium">
+            Select cartridge
+            <select
+              disabled={!canEdit}
+              value={form.etoCartridgeId}
+              onChange={(e) => {
+                const selected = (cartridges.data ?? []).find(
+                  (c) => c._id === e.target.value,
+                );
+                setForm((f) => ({
+                  ...f,
+                  etoCartridgeId: e.target.value,
+                  ...(selected
+                    ? {
+                        cartridgeBatchNo: selected.cartridgeBatchNo,
+                        cartridgeExpiryDate: selected.expiryDate
+                          ? String(selected.expiryDate).slice(0, 10)
+                          : f.cartridgeExpiryDate,
+                      }
+                    : {}),
+                }));
+              }}
+              className="mt-1.5 w-full rounded-md border border-line px-3 py-2"
+            >
+              <option value="">Select cartridge</option>
+              {(cartridges.data ?? []).map((c) => (
+                <option key={c._id} value={c._id}>
+                  {c.cartridgeBatchNo} · {c.quantityRemainingGrams}g rem · exp{' '}
+                  {formatDate(c.expiryDate)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="block text-sm font-medium">
+              Cartridge batch no.
+              <input
+                disabled={!canEdit}
+                value={form.cartridgeBatchNo}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, cartridgeBatchNo: e.target.value }))
+                }
+                className="mt-1.5 w-full rounded-md border border-line px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Received on
+              <input
+                type="date"
+                disabled={!canEdit}
+                value={form.cartridgeReceivedOn}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, cartridgeReceivedOn: e.target.value }))
+                }
+                className="mt-1.5 w-full rounded-md border border-line px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Expiry date
+              <input
+                type="date"
+                disabled={!canEdit}
+                value={form.cartridgeExpiryDate}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, cartridgeExpiryDate: e.target.value }))
+                }
+                className="mt-1.5 w-full rounded-md border border-line px-3 py-2"
+              />
+            </label>
+          </div>
+        </div>
 
         <label className="block text-sm font-medium">
           Remarks
@@ -221,6 +304,7 @@ export function SterilizationPage() {
               type="button"
               className="rounded-md border border-line px-4 py-2 text-sm hover:bg-brand-50"
               onClick={async () => {
+                if (!validateLocal()) return;
                 await stage.save.mutateAsync({
                   ...form,
                   configuredTemperatureC: params.temperatureC,
@@ -236,7 +320,10 @@ export function SterilizationPage() {
             <button
               type="button"
               className="rounded-md bg-brand-900 px-4 py-2 text-sm font-medium text-white"
-              onClick={() => setSignOpen(true)}
+              onClick={() => {
+                if (!validateLocal()) return;
+                setSignOpen(true);
+              }}
             >
               Complete Cycle
             </button>

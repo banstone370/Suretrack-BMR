@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { BmrSectionKey, Role } from '../types/enums.js';
+import { Role } from '../types/enums.js';
 
 export const loginSchema = z.object({
   email: z.string().email(),
@@ -21,6 +21,7 @@ export const createBatchSchema = z.object({
   batchSize: z.number().int().positive(),
   manufacturingDate: z.string().or(z.date()),
   expiryDate: z.string().or(z.date()).optional(),
+  expiryYears: z.number().positive().optional(),
 });
 
 export const updateBatchDraftSchema = z.object({
@@ -54,6 +55,7 @@ const sealingModeSchema = z.object({
 export const createProductSchema = z.object({
   name: z.string().trim().min(1),
   catalogueNo: z.string().trim().min(1),
+  size: z.string().trim().max(80).optional(),
   description: z.string().trim().optional(),
   defaultBatchSize: z.number().int().positive().optional(),
   shelfLifeMonths: z.number().int().positive().default(60),
@@ -62,6 +64,7 @@ export const createProductSchema = z.object({
       name: z.string().trim().min(1).optional(),
       sealingTemperatureC: z.number().positive().default(200),
       sealingSopRef: z.string().trim().min(1).default('SOP/MF/011'),
+      sealingDurationSeconds: z.number().positive().default(3),
       sterilizationTemperatureC: z.number().positive().default(55),
       sterilizationDurationHours: z.number().positive().default(4),
       etoCartridgeGrams: z.number().positive().default(40),
@@ -85,10 +88,23 @@ export const createProductSchema = z.object({
     .optional(),
 });
 
+export const sectionFieldSchema = z.object({
+  key: z.string().trim().min(1).max(60),
+  label: z.string().trim().min(1).max(120),
+  type: z.enum(['text', 'textarea', 'number', 'date', 'time', 'select', 'radio', 'checkbox']),
+  options: z.array(z.string().trim().min(1)).max(50).optional(),
+  required: z.boolean().optional(),
+});
+
 export const bmrSectionSchema = z.object({
-  key: z.nativeEnum(BmrSectionKey),
+  key: z.string().trim().min(1).max(60),
   title: z.string().trim().max(160).optional(),
+  instructionHeading: z.string().trim().max(160).optional(),
   instructions: z.array(z.string().trim().min(1)).max(60).optional(),
+  tableHeading: z.string().trim().max(200).optional(),
+  columns: z.array(z.string().trim().max(80)).max(20).optional(),
+  fields: z.array(sectionFieldSchema).max(20).optional(),
+  labels: z.record(z.string().max(60), z.string().trim().max(200)).optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -96,6 +112,7 @@ export const updateProductTemplateSchema = z.object({
   name: z.string().trim().min(1).optional(),
   sealingTemperatureC: z.number().positive().optional(),
   sealingSopRef: z.string().trim().min(1).optional(),
+  sealingDurationSeconds: z.number().positive().optional(),
   sterilizationTemperatureC: z.number().positive().optional(),
   sterilizationDurationHours: z.number().positive().optional(),
   etoCartridgeGrams: z.number().positive().optional(),

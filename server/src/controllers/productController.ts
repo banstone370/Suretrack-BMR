@@ -2,9 +2,14 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Product } from '../models/Product.js';
 import { ProcessTemplate } from '../models/ProcessTemplate.js';
+import type { IBatch } from '../models/Batch.js';
+import { renderBmrPdf } from '../pdf/bmrTemplateGenerator.js';
 import { writeAudit } from '../audit/auditLogger.js';
 import { AppError, ok } from '../utils/errors.js';
 import { DEFAULT_STAGES, updateProductTemplateSchema } from '../validators/index.js';
+
+type TemplateBody = z.infer<typeof updateProductTemplateSchema>;
+type SectionsInput = TemplateBody['sections'];
 
 const DEFAULT_RM_QC = [
   'Hub checking',
@@ -14,6 +19,61 @@ const DEFAULT_RM_QC = [
 ];
 
 const DEFAULT_IPQC = ['Dust free', 'Burr free', 'Foreign particle free'];
+
+/** Trim saved section text and drop empties, keeping the print order intact. */
+function normalizeSections(list: SectionsInput) {
+  return (list ?? []).map((section) => {
+    const labels = section.labels
+      ? Object.fromEntries(
+          Object.entries(section.labels)
+            .map(([key, value]) => [key.trim(), String(value ?? '').trim()])
+            .filter(([key, value]) => key && value),
+        )
+      : {};
+    return {
+      key: section.key,
+      title: section.title?.trim() || undefined,
+      instructionHeading: section.instructionHeading?.trim() || undefined,
+      instructions: (section.instructions ?? []).map((line) => line.trim()).filter(Boolean),
+      tableHeading: section.tableHeading?.trim() || undefined,
+      columns: (section.columns ?? []).map((column) => column.trim()),
+      fields: (section.fields ?? []).map((field) => ({
+        key: field.key.trim(),
+        label: field.label.trim(),
+        type: field.type,
+        options: (field.options ?? []).map((option) => option.trim()).filter(Boolean),
+        required: field.required === true,
+      })),
+      labels: Object.keys(labels).length > 0 ? labels : undefined,
+      enabled: section.enabled !== false,
+    };
+  });
+}
+
+function extraSectionsFrom(sections: ReturnType<typeof normalizeSections>): string[] {
+  return sections
+    .filter(
+      (section) =>
+        section.enabled &&
+        (section.key === 'CONTROL_SAMPLE' || section.key === 'LABEL_OF_PRODUCT'),
+    )
+    .map((section) => section.key);
+}
+
+/** Copy stored section documents into a plain snapshot for the PDF renderer. */
+function snapshotSections(list: Array<Record<string, any>>) {
+  return list.map((section) => ({
+    key: String(section.key ?? ''),
+    title: section.title,
+    instructionHeading: section.instructionHeading,
+    instructions: Array.isArray(section.instructions) ? section.instructions : [],
+    tableHeading: section.tableHeading,
+    columns: Array.isArray(section.columns) ? section.columns : [],
+    fields: Array.isArray(section.fields) ? section.fields : [],
+    labels: section.labels ?? undefined,
+    enabled: section.enabled !== false,
+  }));
+}
 
 export async function listProducts(_req: Request, res: Response, next: NextFunction) {
   try {
@@ -41,6 +101,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
     const body = req.body as {
       name: string;
       catalogueNo: string;
+      size?: string;
       description?: string;
       defaultBatchSize?: number;
       shelfLifeMonths: number;
@@ -48,6 +109,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
         name?: string;
         sealingTemperatureC: number;
         sealingSopRef: string;
+        sealingDurationSeconds?: number;
         sterilizationTemperatureC: number;
         sterilizationDurationHours: number;
         etoCartridgeGrams: number;
@@ -89,6 +151,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       sealingParams: {
         temperatureC: tpl?.sealingTemperatureC ?? 200,
         sopRef: tpl?.sealingSopRef ?? 'SOP/MF/011',
+        dwellSeconds: tpl?.sealingDurationSeconds ?? 3,
       },
       sterilizationParams: {
         temperatureC: tpl?.sterilizationTemperatureC ?? 55,
@@ -125,6 +188,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
     const product = await Product.create({
       name: body.name.trim(),
       catalogueNo: body.catalogueNo.trim().toUpperCase(),
+      size: body.size?.trim(),
       description: body.description?.trim(),
       defaultBatchSize: body.defaultBatchSize,
       shelfLifeMonths: body.shelfLifeMonths,
@@ -192,6 +256,9 @@ export async function updateProductTemplate(req: Request, res: Response, next: N
     if (body.sealingSopRef !== undefined) {
       template.set('sealingParams.sopRef', body.sealingSopRef);
     }
+    if (body.sealingDurationSeconds !== undefined) {
+      template.set('sealingParams.dwellSeconds', body.sealingDurationSeconds);
+    }
     if (body.sterilizationTemperatureC !== undefined) {
       template.set('sterilizationParams.temperatureC', body.sterilizationTemperatureC);
     }
@@ -226,21 +293,11 @@ export async function updateProductTemplate(req: Request, res: Response, next: N
     if (body.extraSections !== undefined) template.extraSections = body.extraSections;
     if (body.optionalStages !== undefined) template.optionalStages = body.optionalStages;
     if (body.sections !== undefined) {
-      template.sections = body.sections.map((section) => ({
-        key: section.key,
-        title: section.title?.trim() || undefined,
-        instructions: (section.instructions ?? []).map((line) => line.trim()).filter(Boolean),
-        enabled: section.enabled !== false,
-      }));
+      const sections = normalizeSections(body.sections);
+      template.sections = sections;
       // Keep the legacy extraSections flag in sync with the ordered section list
       // so older readers (and the batch snapshot) stay accurate.
-      template.extraSections = template.sections
-        .filter(
-          (section) =>
-            section.enabled !== false &&
-            (section.key === 'CONTROL_SAMPLE' || section.key === 'LABEL_OF_PRODUCT'),
-        )
-        .map((section) => section.key);
+      template.extraSections = extraSectionsFrom(sections);
     }
 
     await template.save();
@@ -255,6 +312,98 @@ export async function updateProductTemplate(req: Request, res: Response, next: N
     });
 
     res.json(ok(template));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Render an unsaved template as a real PDF so the editor can preview exactly
+ * what the batch record will look like. Nothing is written to the database.
+ */
+export async function previewProductTemplate(req: Request, res: Response, next: NextFunction) {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) throw new AppError(404, 'NOT_FOUND', 'Product not found');
+    if (!product.processTemplateId) {
+      throw new AppError(404, 'NOT_FOUND', 'Process template not configured');
+    }
+    const template = await ProcessTemplate.findById(product.processTemplateId);
+    if (!template) throw new AppError(404, 'NOT_FOUND', 'Process template not found');
+
+    const body = req.body as TemplateBody;
+    const sections =
+      body.sections !== undefined
+        ? normalizeSections(body.sections)
+        : snapshotSections((template.sections ?? []) as Array<Record<string, any>>);
+
+    const snapshot: Record<string, unknown> = {
+      sealingParams: {
+        temperatureC: body.sealingTemperatureC ?? template.sealingParams?.temperatureC ?? 200,
+        sopRef: body.sealingSopRef ?? template.sealingParams?.sopRef ?? 'SOP/MF/011',
+        dwellSeconds: body.sealingDurationSeconds ?? template.sealingParams?.dwellSeconds ?? 3,
+      },
+      sterilizationParams: {
+        temperatureC:
+          body.sterilizationTemperatureC ?? template.sterilizationParams?.temperatureC ?? 55,
+        durationHours:
+          body.sterilizationDurationHours ?? template.sterilizationParams?.durationHours ?? 4,
+        etoCartridgeGrams:
+          body.etoCartridgeGrams ?? template.sterilizationParams?.etoCartridgeGrams ?? 40,
+        sopRef: body.sterilizationSopRef ?? template.sterilizationParams?.sopRef ?? 'SOP/MF/008',
+      },
+      sterilitySop: body.sterilitySop ?? template.sterilitySop ?? 'SOP/QC/018',
+      betSop: body.betSop ?? template.betSop ?? 'SOP/QC/026',
+      storageCondition: body.storageCondition ?? template.storageCondition,
+      rmQcChecks: body.rmQcChecks ?? template.rmQcChecks ?? [],
+      ipqcChecks: body.ipqcChecks ?? template.ipqcChecks ?? [],
+      docId: body.docId ?? template.docId,
+    };
+
+    const v2 = Boolean(snapshot.docId);
+    if (v2) {
+      Object.assign(snapshot, {
+        bmrIssueNo: body.bmrIssueNo ?? template.bmrIssueNo,
+        bmrEffectiveDate: body.bmrEffectiveDate ?? template.bmrEffectiveDate,
+        manufacturingInstruction: body.manufacturingInstruction ?? template.manufacturingInstruction,
+        rawMaterials:
+          body.rawMaterials ?? (template.rawMaterials ?? []).map((item) => item.name),
+        manufacturingSteps:
+          body.manufacturingSteps ?? (template.manufacturingSteps ?? []).map((item) => item.step),
+        sealingModes: body.sealingModes ?? template.sealingModes ?? [],
+        packingType: body.packingType ?? template.packingType,
+        extraSections:
+          body.sections !== undefined
+            ? extraSectionsFrom(sections)
+            : body.extraSections ?? template.extraSections ?? [],
+        optionalStages: body.optionalStages ?? template.optionalStages ?? [],
+      });
+      if (sections.length > 0) snapshot.sections = sections;
+    }
+
+    const sterilityDate = new Date();
+    const expiryDate = new Date(sterilityDate);
+    expiryDate.setMonth(expiryDate.getMonth() + (product.shelfLifeMonths || 60));
+    expiryDate.setDate(expiryDate.getDate() - 1);
+
+    const batch = {
+      batchNo: 'PREVIEW',
+      productName: product.name,
+      catalogueNo: product.catalogueNo,
+      size: product.size,
+      batchSize: product.defaultBatchSize ?? 0,
+      manufacturingDate: sterilityDate,
+      expiryDate,
+    } as unknown as IBatch;
+
+    await renderBmrPdf({
+      batch,
+      snap: snapshot,
+      stages: {},
+      dispatches: [],
+      out: res,
+      inline: true,
+    });
   } catch (err) {
     next(err);
   }

@@ -8,15 +8,16 @@ import { BatchStatus } from '../types/enums.js';
 import { AppError, ok } from '../utils/errors.js';
 import { addMonths, buildBatchNoPrefix, formatBatchNo } from '../utils/batchNo.js';
 import { streamBmrPdf } from '../pdf/bmrGenerator.js';
-import { streamTemplateBmrPdf } from '../pdf/bmrTemplateGenerator.js';
+import { streamTemplateBmrPdf, DEFAULT_SECTION_ORDER } from '../pdf/bmrTemplateGenerator.js';
 import {
   batchProgressPercent,
   buildTimeline,
 } from '../workflow/batchStateMachine.js';
 import * as auditController from './auditController.js';
 
-async function nextBatchNo(catalogueNo: string, manufacturingDate: Date): Promise<string> {
-  const prefix = buildBatchNoPrefix(catalogueNo, manufacturingDate);
+const DEFAULT_SECTION_KEYS = new Set(DEFAULT_SECTION_ORDER);
+
+async function nextBatchNo(catalogueNo: string, manufacturingDate: Date): Promise<string> {  const prefix = buildBatchNoPrefix(catalogueNo, manufacturingDate);
   const existing = await Batch.find({ batchNo: new RegExp(`^${prefix}`) })
     .select('batchNo')
     .lean();
@@ -128,9 +129,11 @@ export async function createBatch(req: Request, res: Response, next: NextFunctio
     }
 
     const mfgDate = new Date(manufacturingDate);
-    const expDate = expiryDate
-      ? new Date(expiryDate)
-      : addMonths(mfgDate, product.shelfLifeMonths);
+    // Expiry is one day before the sterility date plus the product shelf life,
+    // e.g. sterility 26/11/2026 + 5 years -> 25/11/2031.
+    const autoExpiry = addMonths(mfgDate, product.shelfLifeMonths);
+    autoExpiry.setDate(autoExpiry.getDate() - 1);
+    const expDate = expiryDate ? new Date(expiryDate) : autoExpiry;
 
     const resolvedBatchNo =
       batchNo?.trim() || (await nextBatchNo(product.catalogueNo, mfgDate));
@@ -144,12 +147,18 @@ export async function createBatch(req: Request, res: Response, next: NextFunctio
     const optionalStages = template.optionalStages ?? [];
     const skipPacking = optionalStages.includes('PACKING');
     const skipSealing = optionalStages.includes('SEALING');
+    const rmQcConfig = (template.sections ?? []).find(
+      (section) => section.key === 'RAW_MATERIAL_QC',
+    );
+    const defaultObservation = rmQcConfig?.labels?.defaultObservation;
+    const defaultResult = rmQcConfig?.labels?.defaultResult;
 
     const batch = await Batch.create({
       batchNo: resolvedBatchNo,
       productId: product.id,
       productName: product.name,
       catalogueNo: product.catalogueNo,
+      size: product.size,
       batchSize,
       manufacturingDate: mfgDate,
       expiryDate: expDate,
@@ -189,7 +198,12 @@ export async function createBatch(req: Request, res: Response, next: NextFunctio
                     sections: template.sections.map((section) => ({
                       key: section.key,
                       title: section.title,
+                      instructionHeading: section.instructionHeading,
                       instructions: section.instructions ?? [],
+                      tableHeading: section.tableHeading,
+                      columns: section.columns ?? [],
+                      fields: section.fields ?? [],
+                      labels: section.labels ?? undefined,
                       enabled: section.enabled !== false,
                     })),
                   }
@@ -202,7 +216,8 @@ export async function createBatch(req: Request, res: Response, next: NextFunctio
           lockState: 'OPEN',
           checks: template.rmQcChecks.map((process) => ({
             process,
-            result: null,
+            result: defaultResult ?? null,
+            observation: defaultObservation ?? null,
           })),
         },
         rawMaterialConsumption: {
@@ -284,6 +299,17 @@ export async function createBatch(req: Request, res: Response, next: NextFunctio
           lockState: 'OPEN',
           storageCondition: template.storageCondition,
         },
+        customSections: Object.fromEntries(
+          (template.sections ?? [])
+            .filter(
+              (section) =>
+                section.enabled !== false &&
+                !DEFAULT_SECTION_KEYS.has(section.key) &&
+                Array.isArray(section.fields) &&
+                section.fields.length > 0,
+            )
+            .map((section) => [section.key, { rows: [] }]),
+        ),
       },
       createdBy: req.user!.id,
     });
@@ -404,6 +430,43 @@ export async function getBatchTimeline(req: Request, res: Response, next: NextFu
         timeline: buildTimeline(batch.status),
       }),
     );
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function saveCustomSections(req: Request, res: Response, next: NextFunction) {
+  try {
+    const batch = await Batch.findById(req.params.batchId);
+    if (!batch) throw new AppError(404, 'NOT_FOUND', 'Batch not found');
+    const input = (req.body ?? {}).sections as
+      | Record<string, { rows?: Array<Record<string, unknown>> }>
+      | undefined;
+    if (!input || typeof input !== 'object') {
+      throw new AppError(400, 'VALIDATION_ERROR', 'sections object is required');
+    }
+    const stages = { ...((batch.stages ?? {}) as Record<string, unknown>) };
+    const current = (stages.customSections ?? {}) as Record<string, unknown>;
+    const nextSections: Record<string, unknown> = { ...current };
+    for (const [key, value] of Object.entries(input)) {
+      const rows = Array.isArray(value?.rows) ? value.rows.slice(0, 200) : [];
+      nextSections[key] = { rows };
+    }
+    stages.customSections = nextSections;
+    batch.stages = stages;
+    batch.markModified('stages');
+    await batch.save();
+
+    await writeAudit({
+      actor: req.user,
+      action: 'SAVE_CUSTOM_SECTIONS',
+      entityType: 'Batch',
+      entityId: batch.id,
+      batchId: batch.id,
+      newValue: nextSections,
+      req,
+    });
+    res.json(ok(serializeBatch(batch)));
   } catch (err) {
     next(err);
   }

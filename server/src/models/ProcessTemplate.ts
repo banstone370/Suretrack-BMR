@@ -14,11 +14,24 @@ export interface IManufacturingStep {
   step: string;
 }
 
-/** A configurable section of the BMR: heading, free-text instructions and print order. */
+export interface IProcessField {
+  key: string;
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'date' | 'time' | 'select' | 'radio' | 'checkbox';
+  options?: string[];
+  required?: boolean;
+}
+
+/** A configurable section of the BMR: headings, wording, table text and print order. */
 export interface IProcessSection {
   key: string;
   title?: string;
+  instructionHeading?: string;
   instructions?: string[];
+  tableHeading?: string;
+  columns?: string[];
+  fields?: IProcessField[];
+  labels?: Record<string, string>;
   enabled?: boolean;
 }
 
@@ -31,6 +44,7 @@ export interface IProcessTemplate extends Document {
     temperatureC: number;
     sopRef: string;
     allowedRange?: { min: number; max: number };
+    dwellSeconds?: number;
   };
   sterilizationParams: {
     temperatureC: number;
@@ -74,6 +88,7 @@ const processTemplateSchema = new Schema<IProcessTemplate>(
         min: Number,
         max: Number,
       },
+      dwellSeconds: { type: Number, default: 3 },
     },
     sterilizationParams: {
       temperatureC: { type: Number, required: true },
@@ -121,7 +136,14 @@ const processTemplateSchema = new Schema<IProcessTemplate>(
       {
         key: { type: String, required: true },
         title: { type: String },
+        instructionHeading: { type: String },
         instructions: [{ type: String }],
+        tableHeading: { type: String },
+        columns: [{ type: String }],
+        // Field definitions power the generic table for custom sections.
+        fields: { type: Schema.Types.Mixed },
+        // Free-form map of field id -> caption, e.g. { totalGood: 'Total good quantity:' }.
+        labels: { type: Schema.Types.Mixed },
         enabled: { type: Boolean, default: true },
       },
     ],

@@ -5,6 +5,7 @@ import { SkippedStagePanel } from '../../components/batch/SkippedStagePanel';
 import { ElectronicSignature } from '../../components/forms/ElectronicSignature';
 import { useAuth } from '../auth/AuthContext';
 import { useStage } from '../../hooks/useStage';
+import { processDateError } from '../../lib/utils';
 
 export function PackingPage() {
   const { batchId } = useParams();
@@ -47,6 +48,11 @@ export function PackingPage() {
   function validateLocal() {
     if (form.pouchesDamaged > form.pouchesTaken) {
       setError('Damaged pouches cannot exceed pouches taken');
+      return false;
+    }
+    const dateErr = processDateError(form.packingDate, 'Packing date');
+    if (dateErr) {
+      setError(dateErr);
       return false;
     }
     setError('');

@@ -4,6 +4,7 @@ import { StageShell } from '../../components/batch/StageShell';
 import { ElectronicSignature } from '../../components/forms/ElectronicSignature';
 import { useAuth } from '../auth/AuthContext';
 import { useStage } from '../../hooks/useStage';
+import { processDateError, timeOrderError } from '../../lib/utils';
 
 export function VisualInspectionPage() {
   const { batchId } = useParams();
@@ -46,6 +47,16 @@ export function VisualInspectionPage() {
   function validateLocal() {
     if (form.particlesFound > form.unitsChecked) {
       setError('Particles found cannot exceed units checked');
+      return false;
+    }
+    const dateErr = processDateError(form.inspectionDate, 'Inspection date');
+    if (dateErr) {
+      setError(dateErr);
+      return false;
+    }
+    const timeErr = timeOrderError(form.startTime, form.endTime);
+    if (timeErr) {
+      setError(timeErr);
       return false;
     }
     setError('');

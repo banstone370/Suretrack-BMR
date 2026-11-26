@@ -1,7 +1,16 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, ChevronUp, GripVertical, X } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  GripVertical,
+  Plus,
+  Settings2,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { api } from '../../lib/api';
 import type { ApiResponse, Product } from '../../types';
 
@@ -13,10 +22,32 @@ interface ModeRow {
   sopRef: string;
 }
 
+type FieldType =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'date'
+  | 'time'
+  | 'select'
+  | 'radio'
+  | 'checkbox';
+
+interface SectionFieldRow {
+  key: string;
+  label: string;
+  type: FieldType;
+  options: string;
+}
+
 interface SectionRow {
   key: string;
+  custom: boolean;
   title: string;
+  instructionHeading: string;
   instructions: string;
+  tableHeading: string;
+  fields: SectionFieldRow[];
+  labels: Record<string, string>;
   enabled: boolean;
 }
 
@@ -24,33 +55,259 @@ interface SectionDef {
   key: string;
   label: string;
   defaultTitle: string;
+  instructionHeading?: string;
+  tableHeading?: string;
+  columns: string[];
+  labels?: Array<{ key: string; label: string }>;
 }
 
-/** Every BMR PDF section, with the heading the renderer prints by default. */
+const FIELD_TYPES: Array<{ value: FieldType; label: string }> = [
+  { value: 'text', label: 'Simple text' },
+  { value: 'textarea', label: 'Text area' },
+  { value: 'number', label: 'Number' },
+  { value: 'date', label: 'Date' },
+  { value: 'time', label: 'Time' },
+  { value: 'select', label: 'Dropdown' },
+  { value: 'radio', label: 'Radio button' },
+  { value: 'checkbox', label: 'Checkbox / multiple choice' },
+];
+
+/** Every built-in BMR PDF section with its default headings and table columns. */
 const SECTION_DEFS: SectionDef[] = [
-  { key: 'RAW_MATERIAL_QC', label: 'Raw material QC', defaultTitle: 'QUALITY CHECKING OF RAW MATERIAL' },
+  {
+    key: 'RAW_MATERIAL_QC',
+    label: 'Raw material QC',
+    defaultTitle: 'QUALITY CHECKING OF RAW MATERIAL',
+    instructionHeading: 'GENERAL INSTRUCTION FOR QUALITY CHECKING',
+    columns: [
+      'Sr. No.',
+      'PROCESS',
+      'DONE ON',
+      'START TIME',
+      'END TIME',
+      'OBSERVATION / NOTE',
+      'DONE BY',
+      'CHECKED BY',
+    ],
+    labels: [
+      { key: 'defaultObservation', label: 'Default observation for new rows' },
+      { key: 'defaultResult', label: 'Default result (PASS / FAIL / NA)' },
+    ],
+  },
   {
     key: 'RAW_MATERIAL_CONSUMPTION',
     label: 'Raw material consumption',
     defaultTitle: 'RAW MATERIAL CONSUMPTION RECORD',
+    instructionHeading: 'GENERAL INSTRUCTION FOR ISSUE OF RAW MATERIAL',
+    columns: [
+      'Sr. No.',
+      'RAW MATERIAL NAME',
+      'BATCH NO',
+      'QUALITY CHECKED ON',
+      'QUANTITY',
+      'DONE BY',
+      'CHECKED BY',
+    ],
   },
-  { key: 'MANUFACTURING', label: 'Manufacturing', defaultTitle: 'MANUFACTURING PROCESS' },
-  { key: 'IN_PROCESS_QC', label: 'In-process QC', defaultTitle: 'IN-PROCESS QUALITY CHECKING' },
+  {
+    key: 'MANUFACTURING',
+    label: 'Manufacturing',
+    defaultTitle: 'MANUFACTURING PROCESS',
+    instructionHeading: 'GENERAL INSTRUCTION FOR MANUFACTURING PROCESS',
+    tableHeading: 'RECORD FOR AREA/EQUIPMENT LINE CLEARANCE FOR MANUFACTURING PROCESS',
+    columns: ['Sr. No.', 'PROCESS', 'DONE ON', 'START TIME', 'END TIME', 'DONE BY'],
+    labels: [
+      { key: 'checkedBy', label: 'Clearance label' },
+      { key: 'totalManufactured', label: 'Total manufactured label' },
+      { key: 'totalRejected', label: 'Total rejected label' },
+      { key: 'verifiedBy', label: 'Verified by label' },
+    ],
+  },
+  {
+    key: 'IN_PROCESS_QC',
+    label: 'In-process QC',
+    defaultTitle: 'INPROCESS QUALITY CHECKING',
+    instructionHeading: 'GENERAL INSTRUCTIONS FOR IN-PROCESS QUALITY CHECKING',
+    columns: ['Sr. No.', 'PROCESS', 'DONE ON', 'OBSERVATION / NOTE', 'DONE BY'],
+    labels: [
+      { key: 'totalInspected', label: 'Total inspected label' },
+      { key: 'totalRejected', label: 'Total rejected label' },
+      { key: 'totalGood', label: 'Total good label' },
+      { key: 'verifiedBy', label: 'Verified by label' },
+    ],
+  },
+  {
+    key: 'PACKING',
+    label: 'Packing',
+    defaultTitle: 'PACKING RECORD',
+    instructionHeading: 'GENERAL INSTRUCTIONS FOR PACKING PROCESS',
+    tableHeading: 'RECORD FOR LINE CLEARANCE FOR PACKING PROCESS',
+    columns: [
+      'Sr. No.',
+      'Date of packing',
+      'Quantity Of Pouch Taken',
+      'Quantity Of Device Packed',
+      'No. Of Pouches Damaged',
+      'Done by',
+      'Checked by',
+    ],
+    labels: [
+      { key: 'checkedBy', label: 'Clearance label' },
+      { key: 'verifiedBy', label: 'Verified by label' },
+    ],
+  },
+  {
+    key: 'SEALING',
+    label: 'Sealing',
+    defaultTitle: 'SEALING RECORD',
+    instructionHeading: 'GENERAL INSTRUCTIONS FOR SEALING PROCESS',
+    tableHeading: 'RECORD FOR LINE CLEARANCE FOR SEALING PROCESS',
+    columns: [
+      'Sr. No.',
+      'Date of sealing',
+      'Quantity Of Devises Sealed',
+      'Total Damages In The Process',
+      'Done by',
+      'Checked by',
+    ],
+    labels: [
+      { key: 'checkedBy', label: 'Clearance label' },
+      { key: 'verifiedBy', label: 'Verified by label' },
+    ],
+  },
   {
     key: 'VISUAL_INSPECTION',
     label: 'Visual inspection',
-    defaultTitle: 'VISUAL INSPECTION FOR DUST / FOREIGN PARTICLES',
+    defaultTitle: 'VISUAL INSPECTION FOR DUST/FOREIGN PARTICLES',
+    tableHeading: 'RECORD FOR LINE CLEARANCE FOR VISUAL INSPECTION PROCESS',
+    columns: [
+      'Sr. No.',
+      'Date of visual inspection',
+      'Total number of units checked',
+      'Number of units with white particles found',
+      'Total number of good units found',
+      'Done by',
+      'Checked by',
+    ],
+    labels: [
+      { key: 'checkedBy', label: 'Clearance label' },
+      { key: 'verifiedBy', label: 'Verified by label' },
+    ],
   },
-  { key: 'PACKING', label: 'Packing', defaultTitle: 'PACKING RECORD' },
-  { key: 'SEALING', label: 'Sealing', defaultTitle: 'SEALING RECORD' },
-  { key: 'STERILIZATION', label: 'Sterilization', defaultTitle: 'STERILIZATION RECORD' },
-  { key: 'LABELLING', label: 'Labelling', defaultTitle: 'BATCH LABELLING RECORD' },
-  { key: 'STERILITY_TEST', label: 'Sterility test', defaultTitle: 'STERILITY TEST RECORD' },
-  { key: 'BET_TEST', label: 'BET test', defaultTitle: 'BET TEST RECORD' },
-  { key: 'CONTROL_SAMPLE', label: 'Control sample', defaultTitle: 'CONTROL SAMPLE RECORD' },
-  { key: 'LABEL_OF_PRODUCT', label: 'Label of the product', defaultTitle: 'LABEL OF THE PRODUCT' },
-  { key: 'FINISHED_GOODS', label: 'Finished goods', defaultTitle: 'BATCH PACKING RECORD' },
-  { key: 'DISPATCH', label: 'Dispatch', defaultTitle: 'MATERIAL DISPATCH RECORD' },
+  {
+    key: 'STERILIZATION',
+    label: 'Sterilization',
+    defaultTitle: 'STERILIZATION RECORD',
+    instructionHeading: 'GENERAL INSTRUCTIONS FOR STERILIZATION PROCESS',
+    tableHeading: 'RECORD FOR LINE CLEARANCE FOR THE ETO STERILIZER',
+    columns: [
+      'DATE',
+      'QUANTITY',
+      'START TIME',
+      'END TIME',
+      'OPERATOR',
+      'CHECKED BY',
+      'BATCH NO',
+      'RECEIVED ON',
+      'EXPIRY DATE',
+    ],
+    labels: [
+      { key: 'checkedBy', label: 'Clearance label' },
+      { key: 'verifiedBy', label: 'Verified by label' },
+      { key: 'paramsHeading', label: 'Process parameters heading' },
+      { key: 'cartridgeTitle', label: 'ETO cartridge table heading' },
+    ],
+  },
+  {
+    key: 'LABELLING',
+    label: 'Labelling',
+    defaultTitle: 'BATCH LABELLING RECORD',
+    instructionHeading: 'GENERAL INSTRUCTIONS FOR LABELLING PROCESS',
+    tableHeading: 'RECORD FOR LINE CLEARANCE FOR THE LABELLING PROCESS',
+    columns: [],
+    labels: [
+      { key: 'checkedBy', label: 'Clearance label' },
+      { key: 'verifiedBy', label: 'Verified by label' },
+      { key: 'activityTitle', label: 'Activity heading' },
+      { key: 'labelsPrintedBy', label: 'Labels printed by label' },
+      { key: 'labelsPrinted', label: 'Labels printed label' },
+      { key: 'devicesLabelled', label: 'Devices labelled label' },
+      { key: 'labelsDestroyed', label: 'Labels destroyed label' },
+      { key: 'doneOn', label: 'Done on label' },
+    ],
+  },
+  {
+    key: 'STERILITY_TEST',
+    label: 'Sterility test',
+    defaultTitle: 'STERILITY TEST RECORD',
+    columns: [],
+    labels: [
+      { key: 'sop', label: 'SOP label' },
+      { key: 'sampleQuantity', label: 'Sample quantity label' },
+      { key: 'doneOn', label: 'Done on label' },
+      { key: 'reportNo', label: 'Report no label' },
+      { key: 'result', label: 'Result label' },
+      { key: 'checkedBy', label: 'Checked by label' },
+      { key: 'startTime', label: 'Start time label' },
+      { key: 'endTime', label: 'End time label' },
+    ],
+  },
+  {
+    key: 'BET_TEST',
+    label: 'BET test',
+    defaultTitle: 'BET TEST RECORD',
+    columns: [],
+    labels: [
+      { key: 'sop', label: 'SOP label' },
+      { key: 'sampleQuantity', label: 'Sample quantity label' },
+      { key: 'doneOn', label: 'Done on label' },
+      { key: 'reportNo', label: 'Report no label' },
+      { key: 'result', label: 'Result label' },
+      { key: 'checkedBy', label: 'Checked by label' },
+      { key: 'startTime', label: 'Start time label' },
+      { key: 'endTime', label: 'End time label' },
+    ],
+  },
+  {
+    key: 'CONTROL_SAMPLE',
+    label: 'Control sample',
+    defaultTitle: 'CONTROL SAMPLE RECORD',
+    columns: [],
+    labels: [
+      { key: 'sampleRetained', label: 'Sample retained label' },
+      { key: 'sampleQuantity', label: 'Sample quantity label' },
+      { key: 'doneBy', label: 'Done by label' },
+      { key: 'checkedBy', label: 'Checked by label' },
+    ],
+  },
+  {
+    key: 'FINISHED_GOODS',
+    label: 'Finished goods',
+    defaultTitle: 'BATCH PACKING RECORD',
+    tableHeading: 'AFTER COMPLIANCE MATERIAL SHIFTED TO FINISHED GOODS',
+    columns: [],
+    labels: [
+      { key: 'quantity', label: 'Finished products label' },
+      { key: 'transferDate', label: 'Transfer date label' },
+      { key: 'transferNote', label: 'Transfer note label' },
+    ],
+  },
+  {
+    key: 'LABEL_OF_PRODUCT',
+    label: 'Label of the product',
+    defaultTitle: 'LABEL OF THE PRODUCT :-',
+    columns: [],
+  },
+  {
+    key: 'DISPATCH',
+    label: 'Dispatch',
+    defaultTitle: 'MATERIAL DISPATCH RECORD',
+    columns: ['NAME OF CUSTOMER', 'BILL NO.', 'DATE OF DISPATCH', 'QTY DISPATCHED'],
+    labels: [
+      { key: 'authorizedSignatory', label: 'Authorized signatory label' },
+      { key: 'signatoryRole', label: 'Signatory role label' },
+    ],
+  },
 ];
 
 /** Sections that print no instruction text unless the template supplies some. */
@@ -69,10 +326,11 @@ function sectionDef(key: string): SectionDef | undefined {
 }
 
 function sectionLabel(key: string): string {
-  return sectionDef(key)?.label ?? key;
+  return sectionDef(key)?.label ?? key.replace(/_/g, ' ');
 }
 
-function instructionHint(key: string): string {
+function instructionHint(key: string, custom: boolean): string {
+  if (custom) return 'Blank = no instructions are printed for this section.';
   if (key === 'SEALING') {
     return 'Blank = sealing instructions are generated from the sealing modes above.';
   }
@@ -82,6 +340,15 @@ function instructionHint(key: string): string {
   return 'Blank = the standard instructions for this section are printed.';
 }
 
+function makeFields(labels: string[]): SectionFieldRow[] {
+  return labels.map((label, index) => ({
+    key: `col${index + 1}`,
+    label,
+    type: 'text',
+    options: '',
+  }));
+}
+
 /** Merge the saved section list with the full catalogue, keeping saved order. */
 function initialSections(t: Template): SectionRow[] {
   const saved = t.sections ?? [];
@@ -89,10 +356,28 @@ function initialSections(t: Template): SectionRow[] {
   for (const section of saved) {
     const key = String(section?.key ?? '');
     if (!key || rows.some((row) => row.key === key)) continue;
+    const def = sectionDef(key);
+    const savedFields = (section.fields ?? []).map((field) => ({
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      options: (field.options ?? []).join(', '),
+    }));
+    const fields =
+      savedFields.length > 0
+        ? savedFields
+        : def
+          ? makeFields(section.columns?.length ? section.columns : def.columns)
+          : makeFields(['Column 1', 'Column 2']);
     rows.push({
       key,
+      custom: !def,
       title: section.title ?? '',
+      instructionHeading: section.instructionHeading ?? '',
       instructions: (section.instructions ?? []).join('\n'),
+      tableHeading: section.tableHeading ?? '',
+      fields,
+      labels: { ...(section.labels ?? {}) },
       enabled: section.enabled !== false,
     });
   }
@@ -104,7 +389,17 @@ function initialSections(t: Template): SectionRow[] {
       saved.length === 0 &&
       (def.key === 'CONTROL_SAMPLE' || def.key === 'LABEL_OF_PRODUCT') &&
       !(t.extraSections ?? []).includes(def.key);
-    rows.push({ key: def.key, title: '', instructions: '', enabled: !legacyExtraOff });
+    rows.push({
+      key: def.key,
+      custom: false,
+      title: '',
+      instructionHeading: '',
+      instructions: '',
+      tableHeading: '',
+      fields: makeFields(def.columns),
+      labels: {},
+      enabled: !legacyExtraOff,
+    });
   }
   return rows;
 }
@@ -137,6 +432,7 @@ function initialState(t: Template) {
     manufacturingSteps: lines(t.manufacturingSteps),
     sealingTemperatureC: String(t.sealingParams?.temperatureC ?? 200),
     sealingSopRef: t.sealingParams?.sopRef ?? 'SOP/MF/011',
+    sealingDurationSeconds: String(t.sealingParams?.dwellSeconds ?? 3),
     sealingModes: (t.sealingModes ?? []).map<ModeRow>((m) => ({
       mode: m.mode,
       temperatureC: String(m.temperatureC),
@@ -164,60 +460,92 @@ interface Props {
   onClose: () => void;
 }
 
+type FormState = ReturnType<typeof initialState>;
+
 /**
  * BMR template editor. Opens as a separate dialog window so the full template
  * can be edited without squashing it into the product card.
  */
 export function ProductTemplateEditor({ product, template, onClose }: Props) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState(() => initialState(template));
+  const [form, setForm] = useState<FormState>(() => initialState(template));
   const [error, setError] = useState('');
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [handleArmed, setHandleArmed] = useState<number | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+
+  function buildPayload() {
+    return {
+      name: form.name.trim(),
+      docId: form.docId.trim() || undefined,
+      bmrIssueNo: form.bmrIssueNo.trim() || undefined,
+      bmrEffectiveDate: form.bmrEffectiveDate.trim() || undefined,
+      manufacturingInstruction: form.manufacturingInstruction.trim() || undefined,
+      rawMaterials: parseLines(form.rawMaterials),
+      manufacturingSteps: parseLines(form.manufacturingSteps),
+      sealingTemperatureC: Number(form.sealingTemperatureC),
+      sealingSopRef: form.sealingSopRef.trim(),
+      sealingDurationSeconds: Number(form.sealingDurationSeconds),
+      sealingModes: form.sealingModes
+        .filter((m) => m.sopRef.trim() && Number(m.temperatureC) > 0)
+        .map((m) => ({
+          mode: m.mode as 'paper' | 'tyvek' | 'blister',
+          temperatureC: Number(m.temperatureC),
+          sopRef: m.sopRef.trim(),
+        })),
+      packingType: form.packingType ? (form.packingType as 'pouch' | 'blisterTray') : undefined,
+      sterilizationTemperatureC: Number(form.sterilizationTemperatureC),
+      sterilizationDurationHours: Number(form.sterilizationDurationHours),
+      etoCartridgeGrams: Number(form.etoCartridgeGrams),
+      sterilizationSopRef: form.sterilizationSopRef.trim(),
+      sterilitySop: form.sterilitySop.trim(),
+      betSop: form.betSop.trim(),
+      storageCondition: form.storageCondition.trim(),
+      rmQcChecks: parseLines(form.rmQcChecks),
+      ipqcChecks: parseLines(form.ipqcChecks),
+      extraSections: form.extraSections,
+      optionalStages: form.optionalStages,
+      sections: form.sections.map((section) => {
+        const fields = section.fields
+          .filter((field) => field.label.trim())
+          .map((field) => ({
+            key: field.key.trim() || field.label.trim().toLowerCase().replace(/\W+/g, '_'),
+            label: field.label.trim(),
+            type: field.type,
+            options:
+              field.type === 'select' || field.type === 'radio'
+                ? field.options
+                    .split(',')
+                    .map((option) => option.trim())
+                    .filter(Boolean)
+                : undefined,
+          }));
+        return {
+          key: section.key,
+          title: section.title.trim() || undefined,
+          instructionHeading: section.instructionHeading.trim() || undefined,
+          instructions: parseLines(section.instructions),
+          tableHeading: section.tableHeading.trim() || undefined,
+          columns: fields.map((field) => field.label),
+          fields,
+          labels: Object.fromEntries(
+            Object.entries(section.labels)
+              .map(([key, value]) => [key, value.trim()])
+              .filter(([, value]) => value),
+          ),
+          enabled: section.enabled,
+        };
+      }),
+    };
+  }
 
   const save = useMutation({
     mutationFn: async () => {
-      const payload = {
-        name: form.name.trim(),
-        docId: form.docId.trim() || undefined,
-        bmrIssueNo: form.bmrIssueNo.trim() || undefined,
-        bmrEffectiveDate: form.bmrEffectiveDate.trim() || undefined,
-        manufacturingInstruction: form.manufacturingInstruction.trim() || undefined,
-        rawMaterials: parseLines(form.rawMaterials),
-        manufacturingSteps: parseLines(form.manufacturingSteps),
-        sealingTemperatureC: Number(form.sealingTemperatureC),
-        sealingSopRef: form.sealingSopRef.trim(),
-        sealingModes: form.sealingModes
-          .filter((m) => m.sopRef.trim() && Number(m.temperatureC) > 0)
-          .map((m) => ({
-            mode: m.mode as 'paper' | 'tyvek' | 'blister',
-            temperatureC: Number(m.temperatureC),
-            sopRef: m.sopRef.trim(),
-          })),
-        packingType: form.packingType ? (form.packingType as 'pouch' | 'blisterTray') : undefined,
-        sterilizationTemperatureC: Number(form.sterilizationTemperatureC),
-        sterilizationDurationHours: Number(form.sterilizationDurationHours),
-        etoCartridgeGrams: Number(form.etoCartridgeGrams),
-        sterilizationSopRef: form.sterilizationSopRef.trim(),
-        sterilitySop: form.sterilitySop.trim(),
-        betSop: form.betSop.trim(),
-        storageCondition: form.storageCondition.trim(),
-        rmQcChecks: parseLines(form.rmQcChecks),
-        ipqcChecks: parseLines(form.ipqcChecks),
-        extraSections: form.extraSections,
-        optionalStages: form.optionalStages,
-        sections: form.sections.map((section) => ({
-          key: section.key,
-          title: section.title.trim() || undefined,
-          instructions: parseLines(section.instructions),
-          enabled: section.enabled,
-        })),
-      };
       const { data } = await api.put<ApiResponse<unknown>>(
         `/products/${product._id}/template`,
-        payload,
+        buildPayload(),
       );
       return data.data;
     },
@@ -234,6 +562,30 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
     },
   });
 
+  async function preview() {
+    setError('');
+    setPreviewing(true);
+    const win = window.open('', '_blank');
+    try {
+      const response = await api.post(`/products/${product._id}/template/preview`, {
+        ...buildPayload(),
+        name: form.name.trim() || 'Template preview',
+      }, { responseType: 'blob' });
+      const url = URL.createObjectURL(response.data as Blob);
+      if (win) win.location.href = url;
+      else window.location.href = url;
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      win?.close();
+      setError(
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data
+          ?.error?.message ?? 'Failed to render preview',
+      );
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -242,7 +594,7 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  function setField(key: keyof ReturnType<typeof initialState>, value: string) {
+  function setField(key: keyof FormState, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -250,6 +602,91 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
     setForm((prev) => ({
       ...prev,
       sections: prev.sections.map((row, i) => (i === index ? { ...row, ...patch } : row)),
+    }));
+  }
+
+  function setFieldRow(sectionIndex: number, fieldIndex: number, patch: Partial<SectionFieldRow>) {
+    setForm((prev) => ({
+      ...prev,
+      sections: prev.sections.map((row, i) =>
+        i === sectionIndex
+          ? {
+              ...row,
+              fields: row.fields.map((field, j) =>
+                j === fieldIndex ? { ...field, ...patch } : field,
+              ),
+            }
+          : row,
+      ),
+    }));
+  }
+
+  function setLabel(sectionIndex: number, key: string, value: string) {
+    setForm((prev) => ({
+      ...prev,
+      sections: prev.sections.map((row, i) =>
+        i === sectionIndex ? { ...row, labels: { ...row.labels, [key]: value } } : row,
+      ),
+    }));
+  }
+
+  function addColumn(sectionIndex: number) {
+    setForm((prev) => ({
+      ...prev,
+      sections: prev.sections.map((row, i) =>
+        i === sectionIndex
+          ? {
+              ...row,
+              fields: [
+                ...row.fields,
+                { key: `col${row.fields.length + 1}_${Date.now()}`, label: 'New column', type: 'text', options: '' },
+              ],
+            }
+          : row,
+      ),
+    }));
+  }
+
+  function removeColumn(sectionIndex: number, fieldIndex: number) {
+    setForm((prev) => ({
+      ...prev,
+      sections: prev.sections.map((row, i) =>
+        i === sectionIndex
+          ? { ...row, fields: row.fields.filter((_, j) => j !== fieldIndex) }
+          : row,
+      ),
+    }));
+  }
+
+  function addSection() {
+    const id = `CUSTOM_${Date.now()}`;
+    setForm((prev) => ({
+      ...prev,
+      sections: [
+        ...prev.sections,
+        {
+          key: id,
+          custom: true,
+          title: 'NEW RECORD SECTION',
+          instructionHeading: 'GENERAL INSTRUCTIONS',
+          instructions: '',
+          tableHeading: '',
+          fields: [
+            { key: 'col1', label: 'Sr. No.', type: 'text', options: '' },
+            { key: 'col2', label: 'Details', type: 'textarea', options: '' },
+          ],
+          labels: {},
+          enabled: true,
+        },
+      ],
+    }));
+    setOpenSections((prev) => ({ ...prev, [id]: true }));
+  }
+
+  function removeSection(index: number) {
+    setForm((prev) => ({
+      ...prev,
+      sections: prev.sections.filter((_, i) => i !== index),
     }));
   }
 
@@ -293,6 +730,8 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
   const input =
     'mt-1 w-full rounded-md border border-line px-3 py-2 outline-none ring-brand-800 focus:ring-2';
   const label = 'text-sm font-medium';
+  const smallInput =
+    'w-full rounded-md border border-line px-2 py-1.5 text-xs outline-none ring-brand-800 focus:ring-2';
 
   if (typeof document === 'undefined') return null;
 
@@ -382,7 +821,7 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
             <section className="space-y-3">
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  PDF sections — wording &amp; order
+                  PDF sections — wording, tables &amp; order
                 </h3>
                 <p className="text-xs text-muted">
                   {form.sections.filter((row) => row.enabled).length} of {form.sections.length}{' '}
@@ -460,8 +899,13 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
                                 row.enabled ? '' : 'text-muted line-through'
                               }`}
                             >
-                              {sectionLabel(row.key)}
+                              {row.custom ? row.title || 'Custom section' : sectionLabel(row.key)}
                             </span>
+                            {row.custom && (
+                              <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-brand-800">
+                                custom
+                              </span>
+                            )}
                           </div>
                           <input
                             value={row.title}
@@ -501,28 +945,192 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
                             }`}
                             aria-expanded={expanded}
                           >
-                            {instructionCount ? `Instructions (${instructionCount})` : 'Instructions'}
+                            {instructionCount ? `Content (${instructionCount})` : 'Content'}
                           </button>
+                          {row.custom && (
+                            <button
+                              type="button"
+                              onClick={() => removeSection(index)}
+                              className="rounded p-1.5 text-danger hover:bg-red-50"
+                              aria-label={`Remove ${sectionLabel(row.key)}`}
+                              title="Remove custom section"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
                       </div>
 
                       {expanded && (
-                        <div className="mt-2 sm:pl-7">
-                          <textarea
-                            value={row.instructions}
-                            onChange={(e) => setSection(index, { instructions: e.target.value })}
-                            rows={4}
-                            placeholder="One instruction per line…"
-                            className="w-full rounded-md border border-line px-2.5 py-1.5 font-mono text-xs outline-none ring-brand-800 focus:ring-2"
-                            aria-label={`Instructions for ${sectionLabel(row.key)}`}
-                          />
-                          <p className="mt-1 text-[11px] text-muted">{instructionHint(row.key)}</p>
+                        <div className="mt-3 space-y-3 border-t border-line/70 pt-3 sm:pl-7">
+                          <label className="block text-[11px] font-semibold uppercase tracking-wide text-muted">
+                            Instruction heading
+                            <input
+                              value={row.instructionHeading}
+                              onChange={(e) =>
+                                setSection(index, { instructionHeading: e.target.value })
+                              }
+                              placeholder={def?.instructionHeading ?? 'GENERAL INSTRUCTIONS'}
+                              className={smallInput}
+                            />
+                          </label>
+                          <label className="block text-[11px] font-semibold uppercase tracking-wide text-muted">
+                            Instructions (one per line)
+                            <textarea
+                              value={row.instructions}
+                              onChange={(e) => setSection(index, { instructions: e.target.value })}
+                              rows={4}
+                              placeholder="One instruction per line…"
+                              className="mt-1 w-full rounded-md border border-line px-2.5 py-1.5 font-mono text-xs outline-none ring-brand-800 focus:ring-2"
+                            />
+                          </label>
+                          <p className="text-[11px] text-muted">
+                            {instructionHint(row.key, row.custom)}
+                          </p>
+
+                          <details className="rounded-md border border-line/80 bg-brand-50/30 px-3 py-2">
+                            <summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-semibold text-brand-900">
+                              <Settings2 size={14} />
+                              Table columns, data types &amp; labels
+                              <span className="font-normal text-muted">
+                                ({row.fields.length} column{row.fields.length === 1 ? '' : 's'})
+                              </span>
+                            </summary>
+                            <div className="mt-3 space-y-3">
+                              <label className="block text-[11px] font-semibold uppercase tracking-wide text-muted">
+                                Table heading
+                                <input
+                                  value={row.tableHeading}
+                                  onChange={(e) =>
+                                    setSection(index, { tableHeading: e.target.value })
+                                  }
+                                  placeholder={def?.tableHeading ?? 'Optional table heading'}
+                                  className={smallInput}
+                                />
+                              </label>
+
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                                    Columns
+                                  </p>
+                                  {(row.custom || row.fields.length === 0) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => addColumn(index)}
+                                      className="inline-flex items-center gap-1 rounded border border-line bg-white px-2 py-1 text-[11px] hover:bg-brand-50"
+                                    >
+                                      <Plus size={12} /> Add column
+                                    </button>
+                                  )}
+                                </div>
+                                {row.fields.length === 0 && (
+                                  <p className="text-xs text-muted">
+                                    This section has no table. Add a column to create one.
+                                  </p>
+                                )}
+                                {row.fields.map((field, fieldIndex) => (
+                                  <div
+                                    key={`${row.key}-${fieldIndex}`}
+                                    className="grid gap-1.5 sm:grid-cols-[1.2fr_0.9fr_1fr_auto]"
+                                  >
+                                    <input
+                                      value={field.label}
+                                      onChange={(e) =>
+                                        setFieldRow(index, fieldIndex, { label: e.target.value })
+                                      }
+                                      placeholder="Column name"
+                                      className={smallInput}
+                                      aria-label={`Column ${fieldIndex + 1} name`}
+                                    />
+                                    <select
+                                      value={field.type}
+                                      onChange={(e) =>
+                                        setFieldRow(index, fieldIndex, {
+                                          type: e.target.value as FieldType,
+                                        })
+                                      }
+                                      className={smallInput}
+                                      aria-label={`Column ${fieldIndex + 1} data type`}
+                                    >
+                                      {FIELD_TYPES.map((type) => (
+                                        <option key={type.value} value={type.value}>
+                                          {type.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      value={field.options}
+                                      onChange={(e) =>
+                                        setFieldRow(index, fieldIndex, { options: e.target.value })
+                                      }
+                                      placeholder={
+                                        field.type === 'select' || field.type === 'radio'
+                                          ? 'Options, comma separated'
+                                          : 'Options (n/a)'
+                                      }
+                                      disabled={field.type !== 'select' && field.type !== 'radio'}
+                                      className={`${smallInput} disabled:bg-brand-50/50 disabled:text-muted`}
+                                      aria-label={`Column ${fieldIndex + 1} options`}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removeColumn(index, fieldIndex)}
+                                      disabled={!row.custom && row.fields.length <= 1}
+                                      className="rounded border border-line px-2 py-1 text-danger hover:bg-red-50 disabled:opacity-30"
+                                      aria-label={`Remove column ${fieldIndex + 1}`}
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                ))}
+                                {!row.custom && row.fields.length > 0 && (
+                                  <p className="text-[11px] text-muted">
+                                    Built-in tables keep their fixed column count; names and
+                                    types are still saved. Use a custom section for a freely
+                                    resizable table.
+                                  </p>
+                                )}
+                              </div>
+
+                              {(def?.labels?.length ?? 0) > 0 && (
+                                <div className="space-y-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                                    Fill-in labels
+                                  </p>
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    {def!.labels!.map((item) => (
+                                      <label key={item.key} className="text-xs text-muted">
+                                        {item.label}
+                                        <input
+                                          value={row.labels[item.key] ?? ''}
+                                          onChange={(e) =>
+                                            setLabel(index, item.key, e.target.value)
+                                          }
+                                          placeholder={item.key}
+                                          className={smallInput}
+                                        />
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </details>
                         </div>
                       )}
                     </div>
                   );
                 })}
               </div>
+
+              <button
+                type="button"
+                onClick={addSection}
+                className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-brand-800/40 bg-brand-50/50 px-3 py-2 text-sm font-medium text-brand-900 hover:bg-brand-50"
+              >
+                <Plus size={15} /> Add section
+              </button>
             </section>
 
             <section className="space-y-3">
@@ -562,7 +1170,7 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
 
             <section className="space-y-3">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Sealing</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <label className={label}>
                   Default temperature (°C)
                   <input
@@ -578,6 +1186,16 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
                   <input
                     value={form.sealingSopRef}
                     onChange={(e) => setField('sealingSopRef', e.target.value)}
+                    className={input}
+                  />
+                </label>
+                <label className={label}>
+                  Sealing time (seconds)
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.sealingDurationSeconds}
+                    onChange={(e) => setField('sealingDurationSeconds', e.target.value)}
                     className={input}
                   />
                 </label>
@@ -789,13 +1407,22 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
             </section>
           </div>
 
-          <div className="flex flex-col-reverse gap-2 border-t border-line bg-white px-5 py-3 sm:flex-row sm:justify-end sm:px-6">
+          <div className="flex flex-col-reverse gap-2 border-t border-line bg-white px-5 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-6">
             <button
               type="button"
               onClick={onClose}
               className="rounded-md border border-line px-4 py-2.5 text-sm hover:bg-brand-50 sm:py-2"
             >
               Cancel
+            </button>
+            <button
+              type="button"
+              onClick={preview}
+              disabled={previewing}
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-brand-800/30 bg-brand-50 px-4 py-2.5 text-sm font-medium text-brand-900 hover:bg-brand-100 disabled:opacity-60 sm:py-2"
+            >
+              <Eye size={15} />
+              {previewing ? 'Rendering…' : 'Preview PDF'}
             </button>
             <button
               type="submit"

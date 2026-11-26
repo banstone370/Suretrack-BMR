@@ -311,8 +311,18 @@ function validateSterilizationPayload(payload: Record<string, unknown>, forSubmi
   if (!payload.startDate || !payload.startTime || !payload.endDate || !payload.endTime) {
     throw new AppError(400, 'VALIDATION_ERROR', 'Start/end date and time are required');
   }
-  if (!payload.machineId) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'Machine ID is required');
+  const startAt = new Date(String(payload.startDate));
+  const [sh, sm] = String(payload.startTime).split(':').map(Number);
+  startAt.setHours(sh || 0, sm || 0, 0, 0);
+  const endAt = new Date(String(payload.endDate));
+  const [eh, em] = String(payload.endTime).split(':').map(Number);
+  endAt.setHours(eh || 0, em || 0, 0, 0);
+  if (endAt < startAt) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      'End date/time cannot be before the start date/time',
+    );
   }
   if (!payload.etoCartridgeId && !payload.cartridgeBatchNo) {
     throw new AppError(400, 'VALIDATION_ERROR', 'ETO cartridge selection is required');
@@ -389,6 +399,29 @@ function computeExpectedEnd(startDate: string, startTime: string, durationHours:
   return new Date(start.getTime() + durationHours * 60 * 60 * 1000);
 }
 
+function assertTimeOrder(start: unknown, end: unknown, label: string) {
+  if (!start || !end) return;
+  const toMinutes = (value: unknown) => {
+    const [hh, mm] = String(value).split(':').map(Number);
+    return (hh || 0) * 60 + (mm || 0);
+  };
+  if (toMinutes(end) < toMinutes(start)) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      `${label}: end time cannot be before start time`,
+    );
+  }
+}
+
+function validateRowTimes(payload: Record<string, unknown>, key: string, label: string) {
+  if (Array.isArray(payload[key])) {
+    (payload[key] as Array<Record<string, unknown>>).forEach((row, index) => {
+      assertTimeOrder(row.startTime, row.endTime, `${label} row ${index + 1}`);
+    });
+  }
+}
+
 function validateStagePayload(
   slug: StageSlug,
   payload: Record<string, unknown>,
@@ -397,15 +430,19 @@ function validateStagePayload(
 ) {
   switch (slug) {
     case 'raw-material-qc':
+      validateRowTimes(payload, 'checks', 'Raw material QC');
       if (forSubmit) validateRmQcPayload(payload, isV2);
       break;
     case 'raw-material-consumption':
       if (forSubmit) validateConsumptionPayload(payload, isV2);
       break;
     case 'manufacturing':
+      validateRowTimes(payload, 'steps', 'Manufacturing');
+      assertTimeOrder(payload.startTime, payload.endTime, 'Manufacturing');
       validateManufacturingPayload(payload, isV2, forSubmit);
       break;
     case 'in-process-qc':
+      validateRowTimes(payload, 'checks', 'In-process QC');
       if (forSubmit) validateIpqcPayload(payload, isV2);
       break;
     case 'visual-inspection':
@@ -415,6 +452,8 @@ function validateStagePayload(
       if (forSubmit) validatePackingPayload(payload);
       break;
     case 'sealing':
+      validateRowTimes(payload, 'modes', 'Sealing');
+      assertTimeOrder(payload.startTime, payload.endTime, 'Sealing');
       validateSealingPayload(payload, isV2, forSubmit);
       break;
     case 'sterilization':
@@ -424,9 +463,11 @@ function validateStagePayload(
       if (forSubmit) validateLabellingPayload(payload);
       break;
     case 'sterility':
+      assertTimeOrder(payload.startTime, payload.endTime, 'Sterility test');
       if (forSubmit) validateLabTestPayload(payload, 'Sterility test');
       break;
     case 'bet':
+      assertTimeOrder(payload.startTime, payload.endTime, 'BET test');
       if (forSubmit) validateLabTestPayload(payload, 'BET test');
       break;
     case 'qa':

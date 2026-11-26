@@ -4,6 +4,7 @@ import { StageShell } from '../../components/batch/StageShell';
 import { ElectronicSignature } from '../../components/forms/ElectronicSignature';
 import { useAuth } from '../auth/AuthContext';
 import { useStage } from '../../hooks/useStage';
+import { processDateError, timeOrderError } from '../../lib/utils';
 
 interface MfgStep {
   step: string;
@@ -74,6 +75,33 @@ export function ManufacturingPage() {
       setError(
         `Date and start/end time are required for every step — missing on "${missing.step}".`,
       );
+      return false;
+    }
+    for (const s of steps) {
+      const dateErr = processDateError(s.processDate, `Date for "${s.step}"`);
+      if (dateErr) {
+        setError(dateErr);
+        return false;
+      }
+      const timeErr = timeOrderError(s.startTime, s.endTime, `End time for "${s.step}"`);
+      if (timeErr) {
+        setError(timeErr);
+        return false;
+      }
+    }
+    setError('');
+    return true;
+  }
+
+  function validateSingle(): boolean {
+    const dateErr = processDateError(form.processDate, 'Process date');
+    if (dateErr) {
+      setError(dateErr);
+      return false;
+    }
+    const timeErr = timeOrderError(form.startTime, form.endTime);
+    if (timeErr) {
+      setError(timeErr);
       return false;
     }
     setError('');
@@ -268,9 +296,12 @@ export function ManufacturingPage() {
               <button
                 type="button"
                 className="rounded-md bg-brand-900 px-4 py-2 text-sm font-medium text-white"
-                onClick={() => setSignOpen(true)}
+                onClick={() => {
+                  if (!validateSingle()) return;
+                  setSignOpen(true);
+                }}
               >
-                Complete & Verify
+                Complete &amp; Verify
               </button>
             </div>
           )}

@@ -4,6 +4,7 @@ import { StageShell } from '../../components/batch/StageShell';
 import { ElectronicSignature } from '../../components/forms/ElectronicSignature';
 import { useAuth } from '../auth/AuthContext';
 import { useStage } from '../../hooks/useStage';
+import { processDateError, timeOrderError } from '../../lib/utils';
 
 interface QcCheck {
   process: string;
@@ -72,7 +73,6 @@ export function RawMaterialPage() {
       qualityCheckedDate?: string;
       quantityWithdrawn: number;
       unit: string;
-      requirementSlipNo?: string;
     }>
   >([]);
   const [signMode, setSignMode] = useState<'submit-qc' | 'approve-qc' | 'reject-qc' | 'submit-cons' | null>(
@@ -110,7 +110,6 @@ export function RawMaterialPage() {
           supplierBatchNo: '',
           quantityWithdrawn: 0,
           unit: 'pcs',
-          requirementSlipNo: '',
           qualityCheckedDate: '',
         },
       ]);
@@ -127,6 +126,9 @@ export function RawMaterialPage() {
   const [sharedDate, setSharedDate] = useState('');
   const [sharedStart, setSharedStart] = useState('');
   const [sharedEnd, setSharedEnd] = useState('');
+  const [sharedObservation, setSharedObservation] = useState('');
+  const [sharedObservationOther, setSharedObservationOther] = useState('');
+  const [sharedResult, setSharedResult] = useState<'' | 'PASS' | 'FAIL' | 'NA'>('');
 
   function updateCheck(index: number, patch: Partial<QcCheck>) {
     setChecks((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
@@ -171,6 +173,65 @@ export function RawMaterialPage() {
     setSharedStart(first.startTime ?? '');
     setSharedEnd(first.endTime ?? '');
     setMsg('First row date and time copied to all processes.');
+  }
+
+  function applyObservationToAll() {
+    if (!sharedObservation && !sharedResult) {
+      setMsg('Choose an observation and/or result above, then apply to all processes.');
+      return;
+    }
+    const observation = sharedObservation
+      ? uiToObservation(sharedObservation, sharedObservationOther)
+      : '';
+    setChecks((prev) =>
+      prev.map((c) => ({
+        ...c,
+        ...(observation ? { observation } : {}),
+        ...(sharedResult ? { result: sharedResult } : {}),
+      })),
+    );
+    setMsg('Observation and result applied to all process rows.');
+  }
+
+  function applyFirstRowObservationToAll() {
+    const first = checks[0];
+    if (!first) return;
+    if (!first.observation && !first.result) {
+      setMsg('Fill observation/result on the first process row, then apply to all.');
+      return;
+    }
+    setChecks((prev) =>
+      prev.map((c, i) =>
+        i === 0
+          ? c
+          : {
+              ...c,
+              observation: first.observation ?? c.observation,
+              result: first.result ?? c.result,
+            },
+      ),
+    );
+    const ui = observationToUi(first.observation);
+    setSharedObservation(ui.choice);
+    setSharedObservationOther(ui.otherText);
+    setSharedResult((first.result ?? '') as '' | 'PASS' | 'FAIL' | 'NA');
+    setMsg('First row observation and result copied to all processes.');
+  }
+
+  function validateQcTimes(): boolean {
+    for (const row of checks) {
+      const dateErr = processDateError(row.processDate, `Date for "${row.process}"`);
+      if (dateErr) {
+        setMsg(dateErr);
+        return false;
+      }
+      const timeErr = timeOrderError(row.startTime, row.endTime, `End time for "${row.process}"`);
+      if (timeErr) {
+        setMsg(timeErr);
+        return false;
+      }
+    }
+    return true;
   }
 
   return (
@@ -259,6 +320,72 @@ export function RawMaterialPage() {
                 >
                   Copy first row to all
                 </button>
+              </div>
+
+              <div className="mt-4 border-t border-brand-200/70 pt-3">
+                <p className="text-sm font-medium text-brand-950">
+                  Same observation &amp; result for all processes
+                </p>
+                <p className="mt-0.5 text-xs text-muted">
+                  Choose once and apply to every row to save filling time.
+                </p>
+                <div className="mt-3 flex flex-wrap items-end gap-2">
+                  <label className="text-xs font-medium text-muted">
+                    Observation
+                    <select
+                      value={sharedObservation}
+                      onChange={(e) => setSharedObservation(e.target.value)}
+                      className="mt-1 block max-w-[16rem] rounded border border-line bg-white px-2 py-1.5 text-sm text-ink"
+                    >
+                      <option value="">Select observation</option>
+                      {OBSERVATION_PRESETS.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {sharedObservation === OTHER_LABEL && (
+                    <label className="text-xs font-medium text-muted">
+                      Other
+                      <input
+                        value={sharedObservationOther}
+                        onChange={(e) => setSharedObservationOther(e.target.value)}
+                        placeholder="Type reason…"
+                        className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-sm text-ink"
+                      />
+                    </label>
+                  )}
+                  <label className="text-xs font-medium text-muted">
+                    Result
+                    <select
+                      value={sharedResult}
+                      onChange={(e) =>
+                        setSharedResult(e.target.value as '' | 'PASS' | 'FAIL' | 'NA')
+                      }
+                      className="mt-1 block rounded border border-line bg-white px-2 py-1.5 text-sm text-ink"
+                    >
+                      <option value="">Select result</option>
+                      <option value="PASS">Pass</option>
+                      <option value="FAIL">Fail</option>
+                      <option value="NA">N/A</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={applyObservationToAll}
+                    className="rounded-md bg-brand-900 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800"
+                  >
+                    Apply to all processes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyFirstRowObservationToAll}
+                    className="rounded-md border border-line bg-white px-3 py-2 text-sm text-brand-900 hover:bg-white"
+                  >
+                    Copy first row to all
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -389,7 +516,10 @@ export function RawMaterialPage() {
                 <button
                   type="button"
                   className="rounded-md bg-brand-900 px-4 py-2 text-sm font-medium text-white"
-                  onClick={() => setSignMode('submit-qc')}
+                  onClick={() => {
+                    if (!validateQcTimes()) return;
+                    setSignMode('submit-qc');
+                  }}
                 >
                   Submit for Approval
                 </button>
@@ -521,21 +651,6 @@ export function RawMaterialPage() {
                       setLines((prev) =>
                         prev.map((l, i) =>
                           i === index ? { ...l, qualityCheckedDate: e.target.value } : l,
-                        ),
-                      )
-                    }
-                    className="mt-1 w-full rounded border border-line px-2 py-1.5 text-sm text-ink"
-                  />
-                </label>
-                <label className="text-xs font-medium text-muted">
-                  Requirement slip no.
-                  <input
-                    disabled={consLocked || !hasPermission('rm_consumption:edit')}
-                    value={line.requirementSlipNo ?? ''}
-                    onChange={(e) =>
-                      setLines((prev) =>
-                        prev.map((l, i) =>
-                          i === index ? { ...l, requirementSlipNo: e.target.value } : l,
                         ),
                       )
                     }

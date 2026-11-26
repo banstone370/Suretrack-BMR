@@ -19,6 +19,12 @@ router.put(
   productController.updateProductTemplate,
 );
 router.post(
+  '/:id/template/preview',
+  requirePermission('products:manage'),
+  validateBody(updateProductTemplateSchema),
+  productController.previewProductTemplate,
+);
+router.post(
   '/',
   requirePermission('products:manage'),
   validateBody(createProductSchema),

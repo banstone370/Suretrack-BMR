@@ -22,6 +22,7 @@ export interface IBatch extends Document {
   productId: Types.ObjectId;
   productName: string;
   catalogueNo: string;
+  size?: string;
   batchSize: number;
   manufacturingDate: Date;
   expiryDate: Date;
@@ -67,6 +68,7 @@ const batchSchema = new Schema<IBatch>(
     productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
     productName: { type: String, required: true },
     catalogueNo: { type: String, required: true },
+    size: { type: String, trim: true },
     batchSize: { type: Number, required: true, min: 1 },
     manufacturingDate: { type: Date, required: true },
     expiryDate: { type: Date, required: true },

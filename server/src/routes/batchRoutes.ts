@@ -57,6 +57,11 @@ router.get(
   requirePermission('pdf:generate'),
   batchController.getBatchPdf,
 );
+router.put(
+  '/:batchId/custom-sections',
+  requirePermission('batches:edit_production'),
+  batchController.saveCustomSections,
+);
 router.get(
   '/:batchId/attachments',
   requirePermission('batches:view_all'),

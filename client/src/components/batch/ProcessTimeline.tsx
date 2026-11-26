@@ -17,8 +17,9 @@ export function ProcessTimeline({ items }: { items: TimelineItem[] }) {
           <span
             className={cn(
               'relative z-10 mt-1 h-3.5 w-3.5 shrink-0 rounded-full border-2',
-              item.state === 'complete' && 'border-accent-500 bg-accent-500',
-              item.state === 'current' && 'border-brand-800 bg-white ring-4 ring-brand-100',
+              item.state === 'complete' && 'border-accent-600 bg-accent-600',
+              item.state === 'current' &&
+                'border-brand-800 bg-brand-800 ring-4 ring-brand-800/15',
               item.state === 'upcoming' && 'border-line bg-white',
             )}
           />
@@ -26,12 +27,23 @@ export function ProcessTimeline({ items }: { items: TimelineItem[] }) {
             <p
               className={cn(
                 'text-sm font-medium',
-                item.state === 'upcoming' ? 'text-muted' : 'text-ink',
+                item.state === 'complete' && 'text-accent-700',
+                item.state === 'current' && 'text-brand-900',
+                item.state === 'upcoming' && 'text-muted',
               )}
             >
               {item.label}
             </p>
-            <p className="text-xs capitalize text-muted">{item.state}</p>
+            <p
+              className={cn(
+                'text-xs capitalize',
+                item.state === 'complete' && 'text-accent-600',
+                item.state === 'current' && 'text-brand-800',
+                item.state === 'upcoming' && 'text-muted',
+              )}
+            >
+              {item.state}
+            </p>
           </div>
         </li>
       ))}

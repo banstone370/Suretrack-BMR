@@ -1,17 +1,40 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import type { ApiResponse, BatchDetail, Product } from '../../types';
+
+/** Parse yyyy-mm-dd as a local calendar date (avoids UTC off-by-one). */
+function parseDate(value: string): Date | null {
+  if (!value) return null;
+  const [y, m, d] = value.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+function toInputDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Expiry = sterility date + shelf life years - 1 day. */
+function expiryFor(sterilityDate: string, years: number): string {
+  const start = parseDate(sterilityDate);
+  if (!start || !years) return '';
+  const expiry = new Date(start);
+  expiry.setFullYear(expiry.getFullYear() + years);
+  expiry.setDate(expiry.getDate() - 1);
+  return toInputDate(expiry);
+}
 
 export function CreateBatchPage() {
   const navigate = useNavigate();
   const [productId, setProductId] = useState('');
   const [batchSize, setBatchSize] = useState(10000);
-  const [manufacturingDate, setManufacturingDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
-  const [expiryDate, setExpiryDate] = useState('');
+  const [sterilityDate, setSterilityDate] = useState(new Date().toISOString().slice(0, 10));
+  const [expiryYears, setExpiryYears] = useState(5);
   const [batchNo, setBatchNo] = useState('');
   const [error, setError] = useState('');
 
@@ -23,6 +46,8 @@ export function CreateBatchPage() {
     },
   });
 
+  const selected = products.data?.find((p) => p._id === productId);
+
   useEffect(() => {
     if (!productId && products.data?.[0]) {
       const p = products.data[0];
@@ -32,21 +57,24 @@ export function CreateBatchPage() {
   }, [products.data, productId]);
 
   useEffect(() => {
-    const product = products.data?.find((p) => p._id === productId);
-    if (!product || !manufacturingDate) return;
-    const mfg = new Date(manufacturingDate);
-    const exp = new Date(mfg);
-    exp.setMonth(exp.getMonth() + (product.shelfLifeMonths || 60));
-    setExpiryDate(exp.toISOString().slice(0, 10));
-  }, [productId, manufacturingDate, products.data]);
+    if (!selected) return;
+    if (selected.defaultBatchSize) setBatchSize(selected.defaultBatchSize);
+    setExpiryYears(Math.max(1, Math.round((selected.shelfLifeMonths || 60) / 12)));
+  }, [selected?._id]);
+
+  const expiryDate = useMemo(
+    () => expiryFor(sterilityDate, expiryYears),
+    [sterilityDate, expiryYears],
+  );
 
   const create = useMutation({
     mutationFn: async () => {
       const { data } = await api.post<ApiResponse<BatchDetail>>('/batches', {
         productId,
         batchSize: Number(batchSize),
-        manufacturingDate,
+        manufacturingDate: sterilityDate,
         expiryDate: expiryDate || undefined,
+        expiryYears,
         batchNo: batchNo.trim() || undefined,
       });
       return data.data;
@@ -65,8 +93,6 @@ export function CreateBatchPage() {
     setError('');
     create.mutate();
   }
-
-  const selected = products.data?.find((p) => p._id === productId);
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -100,12 +126,21 @@ export function CreateBatchPage() {
           </select>
         </label>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <label className="block text-sm font-medium">
             Catalogue No.
             <input
               value={selected?.catalogueNo ?? ''}
               readOnly
+              className="mt-1.5 w-full rounded-md border border-line bg-brand-50/50 px-3 py-2 text-muted"
+            />
+          </label>
+          <label className="block text-sm font-medium">
+            Size / spec
+            <input
+              value={selected?.size ?? ''}
+              readOnly
+              placeholder="Not set on product"
               className="mt-1.5 w-full rounded-md border border-line bg-brand-50/50 px-3 py-2 text-muted"
             />
           </label>
@@ -132,13 +167,24 @@ export function CreateBatchPage() {
           />
         </label>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-3">
           <label className="block text-sm font-medium">
-            Manufacturing Date
+            Sterility Date
             <input
               type="date"
-              value={manufacturingDate}
-              onChange={(e) => setManufacturingDate(e.target.value)}
+              value={sterilityDate}
+              onChange={(e) => setSterilityDate(e.target.value)}
+              className="mt-1.5 w-full rounded-md border border-line px-3 py-2 outline-none ring-brand-800 focus:ring-2"
+              required
+            />
+          </label>
+          <label className="block text-sm font-medium">
+            Expiry duration (years)
+            <input
+              type="number"
+              min={1}
+              value={expiryYears}
+              onChange={(e) => setExpiryYears(Number(e.target.value))}
               className="mt-1.5 w-full rounded-md border border-line px-3 py-2 outline-none ring-brand-800 focus:ring-2"
               required
             />
@@ -148,12 +194,15 @@ export function CreateBatchPage() {
             <input
               type="date"
               value={expiryDate}
-              onChange={(e) => setExpiryDate(e.target.value)}
-              className="mt-1.5 w-full rounded-md border border-line px-3 py-2 outline-none ring-brand-800 focus:ring-2"
-              required
+              readOnly
+              className="mt-1.5 w-full rounded-md border border-line bg-brand-50/50 px-3 py-2 text-muted"
             />
           </label>
         </div>
+        <p className="text-xs text-muted">
+          Expiry is calculated as one day before the sterility date plus the shelf life
+          ({expiryYears} years).
+        </p>
 
         {error && <p className="text-sm text-danger">{error}</p>}
 
