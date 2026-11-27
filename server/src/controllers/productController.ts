@@ -43,6 +43,7 @@ function normalizeSections(list: SectionsInput) {
         type: field.type,
         options: (field.options ?? []).map((option) => option.trim()).filter(Boolean),
         required: field.required === true,
+        roles: (field.roles ?? []).map((role) => role.trim()).filter(Boolean),
       })),
       labels: Object.keys(labels).length > 0 ? labels : undefined,
       enabled: section.enabled !== false,

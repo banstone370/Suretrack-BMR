@@ -94,6 +94,7 @@ export interface Product {
             type: 'text' | 'textarea' | 'number' | 'date' | 'time' | 'select' | 'radio' | 'checkbox';
             options?: string[];
             required?: boolean;
+            roles?: string[];
           }>;
           labels?: Record<string, string>;
           enabled?: boolean;

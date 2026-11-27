@@ -20,6 +20,7 @@ export interface IProcessField {
   type: 'text' | 'textarea' | 'number' | 'date' | 'time' | 'select' | 'radio' | 'checkbox';
   options?: string[];
   required?: boolean;
+  roles?: string[];
 }
 
 /** A configurable section of the BMR: headings, wording, table text and print order. */

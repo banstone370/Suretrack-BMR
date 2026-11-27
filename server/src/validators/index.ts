@@ -94,6 +94,7 @@ export const sectionFieldSchema = z.object({
   type: z.enum(['text', 'textarea', 'number', 'date', 'time', 'select', 'radio', 'checkbox']),
   options: z.array(z.string().trim().min(1)).max(50).optional(),
   required: z.boolean().optional(),
+  roles: z.array(z.string().trim().min(1)).max(20).optional(),
 });
 
 export const bmrSectionSchema = z.object({

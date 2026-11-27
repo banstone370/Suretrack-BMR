@@ -37,6 +37,7 @@ interface SectionFieldRow {
   label: string;
   type: FieldType;
   options: string;
+  roles: string;
 }
 
 interface SectionRow {
@@ -346,6 +347,7 @@ function makeFields(labels: string[]): SectionFieldRow[] {
     label,
     type: 'text',
     options: '',
+    roles: '',
   }));
 }
 
@@ -362,6 +364,7 @@ function initialSections(t: Template): SectionRow[] {
       label: field.label,
       type: field.type,
       options: (field.options ?? []).join(', '),
+      roles: (field.roles ?? []).join(', '),
     }));
     const fields =
       savedFields.length > 0
@@ -521,6 +524,10 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
                     .map((option) => option.trim())
                     .filter(Boolean)
                 : undefined,
+            roles: field.roles
+              .split(',')
+              .map((role) => role.trim())
+              .filter(Boolean),
           }));
         return {
           key: section.key,
@@ -639,7 +646,7 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
               ...row,
               fields: [
                 ...row.fields,
-                { key: `col${row.fields.length + 1}_${Date.now()}`, label: 'New column', type: 'text', options: '' },
+                { key: `col${row.fields.length + 1}_${Date.now()}`, label: 'New column', type: 'text', options: '', roles: '' },
               ],
             }
           : row,
@@ -672,8 +679,8 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
           instructions: '',
           tableHeading: '',
           fields: [
-            { key: 'col1', label: 'Sr. No.', type: 'text', options: '' },
-            { key: 'col2', label: 'Details', type: 'textarea', options: '' },
+            { key: 'col1', label: 'Sr. No.', type: 'text', options: '', roles: '' },
+            { key: 'col2', label: 'Details', type: 'textarea', options: '', roles: '' },
           ],
           labels: {},
           enabled: true,
@@ -1032,7 +1039,7 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
                                 {row.fields.map((field, fieldIndex) => (
                                   <div
                                     key={`${row.key}-${fieldIndex}`}
-                                    className="grid gap-1.5 sm:grid-cols-[1.2fr_0.9fr_1fr_auto]"
+                                    className="grid gap-1.5 sm:grid-cols-[1.2fr_0.9fr_1fr_1fr_auto]"
                                   >
                                     <input
                                       value={field.label}
@@ -1072,6 +1079,15 @@ export function ProductTemplateEditor({ product, template, onClose }: Props) {
                                       disabled={field.type !== 'select' && field.type !== 'radio'}
                                       className={`${smallInput} disabled:bg-brand-50/50 disabled:text-muted`}
                                       aria-label={`Column ${fieldIndex + 1} options`}
+                                    />
+                                    <input
+                                      value={field.roles}
+                                      onChange={(e) =>
+                                        setFieldRow(index, fieldIndex, { roles: e.target.value })
+                                      }
+                                      placeholder="Roles (comma separated)"
+                                      className={smallInput}
+                                      aria-label={`Column ${fieldIndex + 1} authorized roles`}
                                     />
                                     <button
                                       type="button"
